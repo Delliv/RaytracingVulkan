@@ -28,6 +28,7 @@
 
 # Executables
 *.exe
+!deps/
 *.out
 *.app
 
