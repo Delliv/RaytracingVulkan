@@ -12,7 +12,10 @@ project "build"
     targetdir "../../bin/%{cfg.buildcfg}"
     -- ignoredefaultlibraries { "MSVCRT" }
     includedirs { 
-        "../../deps/glfw/include"
+        "../../deps/glfw/include",
+        "../../deps/Vulkan/Include/vulkan",
+        "../../deps/Vulkan/Include/vk_video",
+        "../../deps/glm/"
     }
 
     files {
@@ -23,11 +26,13 @@ project "build"
 
     libdirs { 
         "../../deps/glfw/lib-vc2022",
+        "../../deps/Vulkan/Lib",
         "../../deps/bin/Debug",
         "../../deps/bin/Release"
     }
     
     links {
+        "vulkan-1.lib",
         "glfw3.lib",
         "kernel32.lib",
         "user32.lib",
