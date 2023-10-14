@@ -88,6 +88,15 @@ void window::initialize_vulkan()
 		throw std::runtime_error("Error while creating Vulkan instance.");
 	}
 
+
+	physical_devices();
+
+	validation_layers();
+
+	logical_devices();
+
+	create_presentation_queue_and_swapchain();
+
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device_, surface_, &surfaceCapabilities) != VK_SUCCESS) {
 		throw std::runtime_error("Error al obtener las capacidades de la cadena de intercambio.");
@@ -102,13 +111,6 @@ void window::initialize_vulkan()
 	supportsAsync = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
 	presentWithCompositeAlphaSupported = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0;
 
-	physical_devices();
-
-	validation_layers();
-
-	logical_devices();
-
-	create_presentation_queue_and_swapchain();
 }
 
 void window::validation_layers()
@@ -233,11 +235,45 @@ void window::create_presentation_queue_and_swapchain()
 		}
 	}
 
-	/*if (selectedFormat.format == VK_FORMAT_UNDEFINED) {
-		selectedFormat = surfaceFormats[0];
-	}*/
+	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainInfo.surface = surface_;
+	swapchainInfo.minImageCount = minImgCount; 
+	if (swapchainInfo.minImageCount == 0)
+		swapchainInfo.minImageCount = 1;
 
+	swapchainInfo.imageFormat = selectedFormat.format;
+	swapchainInfo.imageColorSpace = selectedFormat.colorSpace;
+	swapchainInfo.imageExtent = currentExtent;
+	swapchainInfo.imageArrayLayers = 1;
+	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
+	VkSurfaceCapabilitiesKHR surfaceCapabilities;
+	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device_, surface_, &surfaceCapabilities) != VK_SUCCESS) {
+		throw std::runtime_error("Error awhile obtaining the surface capabilities.");
+	}
+
+	swapchainInfo.preTransform = surfaceCapabilities.currentTransform;
+	swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Ajusta según tus necesidades
+	swapchainInfo.clipped = VK_TRUE;
+	swapchainInfo.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
+
+	if (vkCreateSwapchainKHR(vk_device_, &swapchainInfo, nullptr, &swapChain) != VK_SUCCESS) {
+		throw std::runtime_error("Error while creating the swap chain.");
+	}
+
+}
+
+void window::obtain_swap_images()
+{
+
+	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchainInfo.minImageCount, nullptr) != VK_SUCCESS) {
+		throw std::runtime_error("Error obtaining the number of images from the swap chain.");
+	}
+	swapChainImages.resize(swapchainInfo.minImageCount);
+	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchainInfo.minImageCount, swapChainImages.data()) != VK_SUCCESS) {
+		throw std::runtime_error("Error obtaining the number of images from the swap chain.");
+	}
 }
 
 GLFWwindow* window::get_window()

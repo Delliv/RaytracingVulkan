@@ -56,6 +56,7 @@ public:
 	void physical_devices();
 	void logical_devices();
 	void create_presentation_queue_and_swapchain();
+	void obtain_swap_images();
 	QueueFamilyIndices indices;
 	// Getters
 	GLFWwindow* get_window();
@@ -81,6 +82,9 @@ private:
 	VkSurfaceKHR surface_;
 	VkQueue graphicsQueue;
 	VkSurfaceFormatKHR selectedFormat;
+	VkSwapchainKHR swapChain;
+	VkSwapchainCreateInfoKHR swapchainInfo;
+	std::vector<VkImage> swapChainImages;
 
 	uint32_t minImgCount;
 	uint32_t maxImgCount;
