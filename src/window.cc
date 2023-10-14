@@ -23,12 +23,9 @@ window::window()
 
 window::~window()
 {
-	vkDestroyInstance(vk_instance_, nullptr);
-
-	glfwDestroyWindow(window_);
-
 	vkDestroySurfaceKHR(vk_instance_, surface_, nullptr);
-
+	vkDestroyInstance(vk_instance_, nullptr);
+	glfwDestroyWindow(window_);
 	glfwTerminate();
 }
 
@@ -82,7 +79,9 @@ void window::initialize_vulkan()
 	// --------------------------------------
 
 	// .......................................
-
+	validation_layers();
+	vk_create_info_.enabledLayerCount = static_cast<uint32_t>(validation_layers_.size());
+	vk_create_info_.ppEnabledLayerNames = validation_layers_.data();
 	// Here we create the vulkan instance and also select the GPU that we want
 	if (vkCreateInstance(&vk_create_info_, nullptr, &vk_instance_) != VK_SUCCESS) {
 		throw std::runtime_error("Error while creating Vulkan instance.");
@@ -91,43 +90,42 @@ void window::initialize_vulkan()
 
 	physical_devices();
 
-	validation_layers();
+	//validation_layers();
 
 	logical_devices();
 
 	create_presentation_queue_and_swapchain();
 
-	VkSurfaceCapabilitiesKHR surfaceCapabilities;
-	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device_, surface_, &surfaceCapabilities) != VK_SUCCESS) {
-		throw std::runtime_error("Error al obtener las capacidades de la cadena de intercambio.");
-	}
-
-	minImgCount = surfaceCapabilities.minImageCount;
-	maxImgCount = surfaceCapabilities.maxImageCount;
-	currentExtent = surfaceCapabilities.currentExtent;
-	minExtent = surfaceCapabilities.minImageExtent;
-	maxExtent = surfaceCapabilities.maxImageExtent;
-
-	supportsAsync = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
-	presentWithCompositeAlphaSupported = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0;
-
 }
 
 void window::validation_layers()
 {
-	// Here we set the validation layers
-
 	uint32_t layerCount = 0;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
 	std::vector<VkLayerProperties> availableLayers(layerCount);
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-	
-	vk_create_info_.enabledLayerCount = 2;
-	const char* validationLayers[] = {
+
+	const char* desiredValidationLayers[] = {
 		"VK_LAYER_KHRONOS_validation",
 		"VK_LAYER_LUNARG_api_dump"
 	};
-	vk_create_info_.ppEnabledLayerNames = validationLayers;
+
+	for (const char* layerName : desiredValidationLayers) {
+		bool layerFound = false;
+		for (const auto& layerProperties : availableLayers) {
+			if (strcmp(layerName, layerProperties.layerName) == 0) {
+				layerFound = true;
+				break;
+			}
+		}
+		if (!layerFound) {
+			throw std::runtime_error("Validation layer not available.");
+		}
+	}
+
+	// Mueve las capas de validación a la lista de miembros en lugar de 
+	// asignar una matriz local.
+	validation_layers_ = std::vector<const char*>(std::begin(desiredValidationLayers), std::end(desiredValidationLayers));
 }
 
 
@@ -164,21 +162,39 @@ void window::physical_devices()
 
 void window::logical_devices()
 {
+	if (glfwCreateWindowSurface(vk_instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
+		throw std::runtime_error("Error while creating surface screen");
+	}
+
 	indices = findQueueFamilies(vk_physical_device_);
+	
+	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+	float queue_priority = 1.0f;
 
-	VkDeviceQueueCreateInfo queueCreateInfo{};
-	queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-	queueCreateInfo.queueCount = 1;
+	if (indices.graphicsFamily.has_value()) {
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queue_priority;
+		queueCreateInfos.push_back(queueCreateInfo);
+	}
 
-	float queuePriority = 1.0f;
-	queueCreateInfo.pQueuePriorities = &queuePriority;
+	if (indices.presentFamily.has_value() && indices.presentFamily != indices.graphicsFamily) {
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = indices.presentFamily.value();
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queue_priority;
+		queueCreateInfos.push_back(queueCreateInfo);
+	}
+
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pQueueCreateInfos = &queueCreateInfo;
-	createInfo.queueCreateInfoCount = 1;
+	createInfo.pQueueCreateInfos = queueCreateInfos.data();
+	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 	createInfo.enabledExtensionCount = 1;
 	const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 	createInfo.ppEnabledExtensionNames = deviceExtensions;
@@ -190,9 +206,7 @@ void window::logical_devices()
 		throw std::runtime_error("failed to create logical device!");
 	}
 
-	if (glfwCreateWindowSurface(vk_instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
-		throw std::runtime_error("Error while creating surface screen");
-	}
+
 
 	VkBool32 surfaceSupport = VK_FALSE;
 	vkGetPhysicalDeviceSurfaceSupportKHR(vk_physical_device_, indices.graphicsFamily.value(), surface_, &surfaceSupport);
@@ -235,25 +249,63 @@ void window::create_presentation_queue_and_swapchain()
 		}
 	}
 
-	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapchainInfo.surface = surface_;
-	swapchainInfo.minImageCount = minImgCount; 
-	if (swapchainInfo.minImageCount == 0)
-		swapchainInfo.minImageCount = 1;
-
-	swapchainInfo.imageFormat = selectedFormat.format;
-	swapchainInfo.imageColorSpace = selectedFormat.colorSpace;
-	swapchainInfo.imageExtent = currentExtent;
-	swapchainInfo.imageArrayLayers = 1;
-	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	VkSurfaceCapabilitiesKHR surfaceCapabilities;
 	if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk_physical_device_, surface_, &surfaceCapabilities) != VK_SUCCESS) {
 		throw std::runtime_error("Error awhile obtaining the surface capabilities.");
 	}
 
+	minImgCount = surfaceCapabilities.minImageCount;
+	maxImgCount = surfaceCapabilities.maxImageCount;
+	currentExtent = surfaceCapabilities.currentExtent;
+	minExtent = surfaceCapabilities.minImageExtent;
+	maxExtent = surfaceCapabilities.maxImageExtent;
+
+	supportsAsync = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
+	presentWithCompositeAlphaSupported = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0;
+
+	swapchainInfo = {};
+	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchainInfo.surface = surface_;
+	swapchainInfo.minImageCount = minImgCount;
+	if (maxImgCount > 0 && (minImgCount + 1) <= maxImgCount) {
+		swapchainInfo.minImageCount = minImgCount + 1;
+	}
+
+
+	swapchainInfo.imageFormat = selectedFormat.format;
+	swapchainInfo.imageColorSpace = selectedFormat.colorSpace;
+	swapchainInfo.imageExtent = currentExtent;
+	swapchainInfo.imageArrayLayers = 1;
+
+
+	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+	uint32_t queueFamilyIndices[] = {
+		indices.graphicsFamily.value(),
+		indices.presentFamily.value()
+	};
+
+	if (indices.graphicsFamily != indices.presentFamily) {
+		swapchainInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		swapchainInfo.queueFamilyIndexCount = 2;
+		swapchainInfo.pQueueFamilyIndices = queueFamilyIndices;
+	}
+	else {
+		swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		swapchainInfo.pQueueFamilyIndices = nullptr;
+	}
+
 	swapchainInfo.preTransform = surfaceCapabilities.currentTransform;
-	swapchainInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+	VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	if (supportsAsync) {
+		compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+	}
+	else if (presentWithCompositeAlphaSupported) {
+		compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+	}
+	swapchainInfo.compositeAlpha = compositeAlpha;
 	swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Ajusta según tus necesidades
 	swapchainInfo.clipped = VK_TRUE;
 	swapchainInfo.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
@@ -274,6 +326,21 @@ void window::obtain_swap_images()
 	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchainInfo.minImageCount, swapChainImages.data()) != VK_SUCCESS) {
 		throw std::runtime_error("Error obtaining the number of images from the swap chain.");
 	}
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageType,
+	const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+	void* pUserData) {
+
+	// Imprime información de depuración o registra eventos de depuración aquí
+	if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+		// Mensaje de advertencia o error, registra o muestra información de depuración
+		std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+	}
+
+	return VK_FALSE;
 }
 
 GLFWwindow* window::get_window()

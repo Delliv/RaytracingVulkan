@@ -35,13 +35,22 @@ public:
 		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
 		vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
 
-		// Buscar una familia de colas que admita gráficos
+		// Buscar una familia de colas que admita gráficos y/o presentación
 		for (uint32_t i = 0; i < queueFamilyCount; ++i) {
 			if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
 				indices.graphicsFamily = i;
 			}
 
-			// Puedes agregar más condiciones para encontrar otras familias de colas si es necesario
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface_, &presentSupport);
+
+			if (presentSupport) {
+				indices.presentFamily = i;
+			}
+
+			if (indices.isComplete()) {
+				break;
+			}
 		}
 
 		return indices;
@@ -57,6 +66,10 @@ public:
 	void logical_devices();
 	void create_presentation_queue_and_swapchain();
 	void obtain_swap_images();
+	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pMessenger);
+	void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT messenger, const VkAllocationCallbacks* pAllocator);
+
+
 	QueueFamilyIndices indices;
 	// Getters
 	GLFWwindow* get_window();
@@ -85,6 +98,8 @@ private:
 	VkSwapchainKHR swapChain;
 	VkSwapchainCreateInfoKHR swapchainInfo;
 	std::vector<VkImage> swapChainImages;
+	VkDebugUtilsMessengerEXT debugMessenger;
+	std::vector<const char*> validation_layers_;
 
 	uint32_t minImgCount;
 	uint32_t maxImgCount;
@@ -98,3 +113,4 @@ private:
 
 
 #endif 
+
