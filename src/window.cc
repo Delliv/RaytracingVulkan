@@ -96,6 +96,7 @@ void window::initialize_vulkan()
 
 	create_presentation_queue_and_swapchain();
 
+	create_views();
 }
 
 void window::validation_layers()
@@ -255,7 +256,7 @@ void window::create_presentation_queue_and_swapchain()
 		throw std::runtime_error("Error awhile obtaining the surface capabilities.");
 	}
 
-	minImgCount = surfaceCapabilities.minImageCount;
+	minImgCount = 2;//surfaceCapabilities.minImageCount;
 	maxImgCount = surfaceCapabilities.maxImageCount;
 	currentExtent = surfaceCapabilities.currentExtent;
 	minExtent = surfaceCapabilities.minImageExtent;
@@ -264,22 +265,22 @@ void window::create_presentation_queue_and_swapchain()
 	supportsAsync = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0;
 	presentWithCompositeAlphaSupported = (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0;
 
-	swapchainInfo = {};
-	swapchainInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	swapchainInfo.surface = surface_;
-	swapchainInfo.minImageCount = minImgCount;
-	if (maxImgCount > 0 && (minImgCount + 1) <= maxImgCount) {
+	swapchain_info = {};
+	swapchain_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+	swapchain_info.surface = surface_;
+	swapchain_info.minImageCount = minImgCount;
+	/*if (maxImgCount > 0 && (minImgCount + 1) <= maxImgCount) {
 		swapchainInfo.minImageCount = minImgCount + 1;
-	}
+	}*/
 
 
-	swapchainInfo.imageFormat = selectedFormat.format;
-	swapchainInfo.imageColorSpace = selectedFormat.colorSpace;
-	swapchainInfo.imageExtent = currentExtent;
-	swapchainInfo.imageArrayLayers = 1;
+	swapchain_info.imageFormat = selectedFormat.format;
+	swapchain_info.imageColorSpace = selectedFormat.colorSpace;
+	swapchain_info.imageExtent = currentExtent;
+	swapchain_info.imageArrayLayers = 1;
 
 
-	swapchainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
 	uint32_t queueFamilyIndices[] = {
 		indices.graphicsFamily.value(),
@@ -287,16 +288,16 @@ void window::create_presentation_queue_and_swapchain()
 	};
 
 	if (indices.graphicsFamily != indices.presentFamily) {
-		swapchainInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-		swapchainInfo.queueFamilyIndexCount = 2;
-		swapchainInfo.pQueueFamilyIndices = queueFamilyIndices;
+		swapchain_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+		swapchain_info.queueFamilyIndexCount = 2;
+		swapchain_info.pQueueFamilyIndices = queueFamilyIndices;
 	}
 	else {
-		swapchainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		swapchainInfo.pQueueFamilyIndices = nullptr;
+		swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		swapchain_info.pQueueFamilyIndices = nullptr;
 	}
 
-	swapchainInfo.preTransform = surfaceCapabilities.currentTransform;
+	swapchain_info.preTransform = surfaceCapabilities.currentTransform;
 
 	VkCompositeAlphaFlagBitsKHR compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 	if (supportsAsync) {
@@ -305,12 +306,12 @@ void window::create_presentation_queue_and_swapchain()
 	else if (presentWithCompositeAlphaSupported) {
 		compositeAlpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
 	}
-	swapchainInfo.compositeAlpha = compositeAlpha;
-	swapchainInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Ajusta según tus necesidades
-	swapchainInfo.clipped = VK_TRUE;
-	swapchainInfo.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
+	swapchain_info.compositeAlpha = compositeAlpha;
+	swapchain_info.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Ajusta según tus necesidades
+	swapchain_info.clipped = VK_TRUE;
+	swapchain_info.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
 
-	if (vkCreateSwapchainKHR(vk_device_, &swapchainInfo, nullptr, &swapChain) != VK_SUCCESS) {
+	if (vkCreateSwapchainKHR(vk_device_, &swapchain_info, nullptr, &swapChain) != VK_SUCCESS) {
 		throw std::runtime_error("Error while creating the swap chain.");
 	}
 
@@ -319,13 +320,52 @@ void window::create_presentation_queue_and_swapchain()
 void window::obtain_swap_images()
 {
 
-	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchainInfo.minImageCount, nullptr) != VK_SUCCESS) {
+	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchain_info.minImageCount, nullptr) != VK_SUCCESS) {
 		throw std::runtime_error("Error obtaining the number of images from the swap chain.");
 	}
-	swapChainImages.resize(swapchainInfo.minImageCount);
-	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchainInfo.minImageCount, swapChainImages.data()) != VK_SUCCESS) {
+	swap_chain_images.resize(swapchain_info.minImageCount);
+	if (vkGetSwapchainImagesKHR(vk_device_, swapChain, &swapchain_info.minImageCount, swap_chain_images.data()) != VK_SUCCESS) {
 		throw std::runtime_error("Error obtaining the number of images from the swap chain.");
 	}
+}
+
+void window::create_views()
+{
+	// First we have to get the images to access them
+	uint32_t imageCount;
+	vkGetSwapchainImagesKHR(vk_device_, swapChain, &imageCount, nullptr);
+
+	// Then we save those images in a vector
+	swap_chain_images.resize(imageCount);
+	vk_image_views.resize(imageCount);
+
+	vkGetSwapchainImagesKHR(vk_device_, swapChain, &imageCount, swap_chain_images.data());
+	// Now that swapChainImages has all the images we need we have to create the views, since we will have 2 i will do it inside a for
+	for (size_t i = 0; i < imageCount; i++){
+		VkImageViewCreateInfo viewInfo{};
+		// I put the exact same format as our swap chain
+		viewInfo.format = swapchain_info.imageFormat;
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		// Here we are passing the image to our view info
+		viewInfo.image = swap_chain_images.at(i);
+
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseMipLevel = 0;
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		if (vkCreateImageView(vk_device_, &viewInfo, nullptr, &vk_image_views.at(i)) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create image view!");
+		}
+	}
+
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(

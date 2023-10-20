@@ -66,6 +66,7 @@ public:
 	void logical_devices();
 	void create_presentation_queue_and_swapchain();
 	void obtain_swap_images();
+	void create_views();
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pMessenger);
 	void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT messenger, const VkAllocationCallbacks* pAllocator);
 
@@ -96,11 +97,12 @@ private:
 	VkQueue graphicsQueue;
 	VkSurfaceFormatKHR selectedFormat;
 	VkSwapchainKHR swapChain;
-	VkSwapchainCreateInfoKHR swapchainInfo;
-	std::vector<VkImage> swapChainImages;
+	VkSwapchainCreateInfoKHR swapchain_info;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	std::vector<const char*> validation_layers_;
 
+	std::vector<VkImage> swap_chain_images;
+	std::vector<VkImageView> vk_image_views;
 	uint32_t minImgCount;
 	uint32_t maxImgCount;
 	VkExtent2D currentExtent;
