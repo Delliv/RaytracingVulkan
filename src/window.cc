@@ -26,6 +26,7 @@ window::~window()
 	vkDestroySurfaceKHR(vk_instance_, surface_, nullptr);
 	vkDestroyInstance(vk_instance_, nullptr);
 	glfwDestroyWindow(window_);
+	vkDestroyRenderPass(vk_device_, render_pass_,nullptr);
 	glfwTerminate();
 }
 
@@ -97,6 +98,8 @@ void window::initialize_vulkan()
 	create_presentation_queue_and_swapchain();
 
 	create_views();
+
+	render_pass();
 }
 
 void window::validation_layers()
@@ -368,6 +371,131 @@ void window::create_views()
 
 }
 
+void window::render_pass()
+{
+	color_attachment = {};
+	color_attachment.format = swapchain_info.imageFormat;
+	// I dont want multisampling
+	color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	
+	// Here i configure the actions to do at the begining and end of rendering
+	color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+	color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+
+	// First layout
+	color_attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	// Layout to present using swap chain
+	color_attachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+	// Here i configure the subpasses
+	color_attachment_ref = {};
+	// Attachment index
+	color_attachment_ref.attachment = 0;
+	// Layour while subpass
+	color_attachment_ref.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+	subpass = {};
+	// Type of subpass
+	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	subpass.colorAttachmentCount = 1;
+	subpass.pColorAttachments = &color_attachment_ref;
+
+	subpass_dependency = {};
+	subpass_dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+	subpass_dependency.dstSubpass = 0;
+	subpass_dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	subpass_dependency.srcAccessMask = 0;
+	subpass_dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	subpass_dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	attachments = { color_attachment };
+
+	VkRenderPassCreateInfo renderPassInfo{};
+	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+	renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+	renderPassInfo.pAttachments = attachments.data();
+	renderPassInfo.subpassCount = 1;
+	renderPassInfo.pSubpasses = &subpass;
+	renderPassInfo.dependencyCount = 1;
+	renderPassInfo.pDependencies = &subpass_dependency;
+
+	if (vkCreateRenderPass(vk_device_, &renderPassInfo, nullptr, &render_pass_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create render pass!");
+	}
+}
+
+void window::define_descriptors()
+{
+	descriptor_layout = {};
+	descriptor_layout.binding = 0;
+	descriptor_layout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptor_layout.descriptorCount = 1;
+	descriptor_layout.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+
+	layout_info = {};
+	layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layout_info.bindingCount = 1;
+	layout_info.pBindings = &descriptor_layout;
+	
+	if (vkCreateDescriptorSetLayout(vk_device_, &layout_info, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create descriptor set layout!");
+	}
+
+	pool_size = {};
+	pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	pool_size.descriptorCount = 1;
+	
+	pool_info = {};
+	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	pool_info.poolSizeCount = 1;
+	pool_info.pPoolSizes = &pool_size;
+	pool_info.maxSets = 1;
+	if (vkCreateDescriptorPool(vk_device_, &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create descriptor pool!");
+	}
+
+	layouts.push_back(descriptor_set_layout);
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = descriptor_pool;
+	allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+	allocInfo.pSetLayouts = layouts.data();
+	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, &descriptor_set) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate descriptor sets!");
+	}
+
+	/*
+	* TO DO
+	VkDescriptorBufferInfo bufferInfo{};
+	bufferInfo.buffer = yourUniformBuffer;
+	bufferInfo.offset = 0;
+	bufferInfo.range = sizeof(YourUniformBufferObject);
+	VkWriteDescriptorSet descriptorWrite{};
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.dstSet = descriptorSet;
+	descriptorWrite.dstBinding = 0;
+	descriptorWrite.dstArrayElement = 0;
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	descriptorWrite.descriptorCount = 1;
+	descriptorWrite.pBufferInfo = &bufferInfo;
+	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);*/
+}
+
+void window::create_buffers()
+{
+	buffer_Info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	buffer_Info.size = sizeof(UniformBufferObject);
+	buffer_Info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	buffer_Info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(vk_device_, &buffer_Info, nullptr, &buffer_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create Uniform Buffer!");
+	}
+
+}
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -396,6 +524,44 @@ VkSurfaceKHR window::get_vulkan_surface()
 void window::set_clear_color(float r, float g, float b, float a)
 {
 	clearColor = { r,g,b,a };
+}
+
+void window::allocate_memory_for_buffers(VkBuffer* buffer, VkDeviceMemory* buffer_memory, const void* data, VkDeviceSize data_size)
+{
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(vk_device_, *buffer, &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);  // Implementa la función 'findMemoryType' para buscar un tipo de memoria compatible.
+
+	if (vkAllocateMemory(vk_device_, &allocInfo, nullptr, buffer_memory) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate Uniform Buffer memory!");
+	}
+
+	vkBindBufferMemory(vk_device_, *buffer, *buffer_memory, 0);
+
+	if (data != nullptr && data_size > 0) {
+		void* mapped_data;
+		vkMapMemory(vk_device_, *buffer_memory, 0, data_size, 0, &mapped_data);
+		memcpy(mapped_data, data, data_size);
+		vkUnmapMemory(vk_device_, *buffer_memory);
+	}
+}
+
+uint32_t window::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(vk_physical_device_, &memProperties);  
+
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+			return i;
+		}
+	}
+
+	throw std::runtime_error("failed to find suitable memory type!");
 }
 
 

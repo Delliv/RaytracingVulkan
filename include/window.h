@@ -3,6 +3,8 @@
 #include "vulkan_video_codec_h264std.h"
 #include <stdexcept>
 #include <vector>
+#include <array>
+#include "uniforms.h"
 #include <iostream>
 #include <string>
 #include <optional>
@@ -69,7 +71,9 @@ public:
 	void create_views();
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pMessenger);
 	void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT messenger, const VkAllocationCallbacks* pAllocator);
-
+	void render_pass();
+	void define_descriptors();
+	void create_buffers();
 
 	QueueFamilyIndices indices;
 	// Getters
@@ -78,8 +82,8 @@ public:
 	// Setters
 	void set_clear_color(float r, float g, float b, float a);
 
-	
-
+	void allocate_memory_for_buffers(VkBuffer* buffer, VkDeviceMemory* buffer_memory, const void* data, VkDeviceSize data_size);
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 private:
 	// Window stuff
 	GLFWwindow* window_;
@@ -96,12 +100,36 @@ private:
 	VkSurfaceKHR surface_;
 	VkQueue graphicsQueue;
 	VkSurfaceFormatKHR selectedFormat;
+	// Swap chain
 	VkSwapchainKHR swapChain;
+	std::vector<VkImage> swap_chain_images;
 	VkSwapchainCreateInfoKHR swapchain_info;
 	VkDebugUtilsMessengerEXT debugMessenger;
 	std::vector<const char*> validation_layers_;
+	// Render pass
+	VkAttachmentDescription color_attachment;
+	VkAttachmentReference color_attachment_ref;
+	VkSubpassDescription subpass;
+	VkSubpassDependency subpass_dependency;
+	std::array<VkAttachmentDescription, 1> attachments;
+	VkRenderPass render_pass_;
 
-	std::vector<VkImage> swap_chain_images;
+	// Descriptors
+	VkDescriptorSetLayoutBinding descriptor_layout;
+	VkDescriptorSetLayoutCreateInfo layout_info;
+	VkDescriptorPoolSize pool_size;
+	VkDescriptorPoolCreateInfo pool_info;
+	VkDescriptorSetLayout descriptor_set_layout;
+	VkDescriptorPool descriptor_pool;
+	std::vector<VkDescriptorSetLayout> layouts;
+	VkDescriptorSet descriptor_set;
+
+	// Buffers
+	VkBuffer buffer_;
+	VkBufferCreateInfo buffer_Info;
+	VkDeviceMemory uniform_buffer_memory_;
+	UniformBufferObject ubo_;
+	// Views
 	std::vector<VkImageView> vk_image_views;
 	uint32_t minImgCount;
 	uint32_t maxImgCount;
