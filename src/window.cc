@@ -334,42 +334,57 @@ void window::obtain_swap_images()
 
 void window::create_views()
 {
-	// First we have to get the images to access them
+	// Retrieve the count of swap chain images
 	uint32_t imageCount;
 	vkGetSwapchainImagesKHR(vk_device_, swapChain, &imageCount, nullptr);
 
-	// Then we save those images in a vector
+	// Resize vectors to hold the swap chain images and image views
 	swap_chain_images.resize(imageCount);
 	vk_image_views.resize(imageCount);
 
+	// Retrieve the actual images from the swap chain
 	vkGetSwapchainImagesKHR(vk_device_, swapChain, &imageCount, swap_chain_images.data());
-	// Now that swapChainImages has all the images we need we have to create the views, since we will have 2 i will do it inside a for
-	for (size_t i = 0; i < imageCount; i++){
+
+	// Loop through each swap chain image to create a corresponding image view
+	for (size_t i = 0; i < imageCount; i++) {
 		VkImageViewCreateInfo viewInfo{};
-		// I put the exact same format as our swap chain
+
+		// Set the image format to match the swap chain format
 		viewInfo.format = swapchain_info.imageFormat;
+
+		// Define the type of the Vulkan structure being used
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		// Here we are passing the image to our view info
+
+		// Associate this image view with an actual image from the swap chain
 		viewInfo.image = swap_chain_images.at(i);
 
+		// Specify that this image view is for a 2D image
 		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
+		// Identity mapping for color channel swizzling
 		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
+		// Define the aspects of the image this view will access
 		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+		// Mipmap settings: we use only one level
 		viewInfo.subresourceRange.baseMipLevel = 0;
 		viewInfo.subresourceRange.levelCount = 1;
+
+		// Array layer settings: only one layer
 		viewInfo.subresourceRange.baseArrayLayer = 0;
 		viewInfo.subresourceRange.layerCount = 1;
 
+		// Create the image view and store it in vk_image_views
 		if (vkCreateImageView(vk_device_, &viewInfo, nullptr, &vk_image_views.at(i)) != VK_SUCCESS) {
 			throw std::runtime_error("Failed to create image view!");
 		}
 	}
-
 }
+
 
 void window::render_pass()
 {
@@ -485,14 +500,83 @@ void window::define_descriptors()
 
 void window::create_buffers()
 {
+	buffers_.resize(swap_chain_images.size());
+	uniforms_buffers_memory_.resize(swap_chain_images.size());
+
 	buffer_Info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	buffer_Info.size = sizeof(UniformBufferObject);
 	buffer_Info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	buffer_Info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	if (vkCreateBuffer(vk_device_, &buffer_Info, nullptr, &buffer_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create Uniform Buffer!");
+	for (size_t i = 0; i < swap_chain_images.size(); i++) {
+
+		if (vkCreateBuffer(vk_device_, &buffer_Info, nullptr, &buffers_.at(i)) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create Uniform Buffer!");
+		}
+		allocate_memory_for_buffers(&buffers_.at(i), &uniforms_buffers_memory_.at(i), &ubo_, sizeof(ubo_)); // Before test anything fill ubo_ with some data, like camera matrix
 	}
+
+}
+
+void window::create_framebuffers()
+{
+	framebuffers_.resize(swap_chain_images.size());
+
+	for (size_t i = 0; i < swap_chain_images.size(); i++) {
+		VkImageView attachments[] = {
+			vk_image_views[i] 
+		};
+
+		VkFramebufferCreateInfo framebufferInfo{};
+		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		framebufferInfo.renderPass = render_pass_; 
+		framebufferInfo.attachmentCount = 1; 
+		framebufferInfo.pAttachments = attachments;
+		framebufferInfo.width = swapchain_info.imageExtent.width;
+		framebufferInfo.height = swapchain_info.imageExtent.height;
+		framebufferInfo.layers = 1;
+
+
+		if (vkCreateFramebuffer(vk_device_, &framebufferInfo, nullptr, &framebuffers_.at(i)) != VK_SUCCESS) {
+			throw std::runtime_error("failed to create framebuffer!");
+		}
+	}
+}
+
+void window::create_command_pool()
+{
+	VkCommandPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	if (indices.graphicsFamily.has_value()) {
+		poolInfo.queueFamilyIndex = indices.graphicsFamily.value();
+	}
+	poolInfo.flags = 0;
+
+	VkCommandPool commandPool;
+	if (vkCreateCommandPool(vk_device_, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create command pool!");
+	}
+}
+
+void window::create_command_buffers()
+{
+	command_buffers.resize(swap_chain_images.size());
+
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = command_pool_;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	for (size_t i = 0; i < swap_chain_images.size(); i++) {
+		if (vkAllocateCommandBuffers(vk_device_, &allocInfo, &command_buffers.at(i)) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
+	}
+}
+
+void window::record_command_buffers()
+{
 
 }
 

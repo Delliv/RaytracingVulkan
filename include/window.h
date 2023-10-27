@@ -74,6 +74,10 @@ public:
 	void render_pass();
 	void define_descriptors();
 	void create_buffers();
+	void create_framebuffers();
+	void create_command_pool();
+	void create_command_buffers();
+	void record_command_buffers();
 
 	QueueFamilyIndices indices;
 	// Getters
@@ -84,6 +88,8 @@ public:
 
 	void allocate_memory_for_buffers(VkBuffer* buffer, VkDeviceMemory* buffer_memory, const void* data, VkDeviceSize data_size);
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+
+	friend class render;
 private:
 	// Window stuff
 	GLFWwindow* window_;
@@ -125,10 +131,17 @@ private:
 	VkDescriptorSet descriptor_set;
 
 	// Buffers
-	VkBuffer buffer_;
+	std::vector<VkBuffer> buffers_;
 	VkBufferCreateInfo buffer_Info;
-	VkDeviceMemory uniform_buffer_memory_;
+	std::vector<VkDeviceMemory> uniforms_buffers_memory_;
 	UniformBufferObject ubo_;
+
+	// Framebuffers
+	std::vector<VkFramebuffer> framebuffers_;
+
+	// Command pool and command buffers
+	VkCommandPool command_pool_;
+	std::vector<VkCommandBuffer> command_buffers;
 	// Views
 	std::vector<VkImageView> vk_image_views;
 	uint32_t minImgCount;
