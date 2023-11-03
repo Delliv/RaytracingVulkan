@@ -1,0 +1,27 @@
+#version 460
+#extension GL_NV_ray_tracing : enable
+
+layout(set = 0, binding = 0) uniform UniformBufferObject {
+    mat4 model;
+    mat4 view;
+    mat4 proj;
+    uvec2 blasHandle;
+};
+
+layout(set = 0, binding = 1, std430) buffer SceneData {
+    vec3 vertices[];
+};
+
+layout(set = 0, binding = 2) uniform accelerationStructureNV topLevelAS;
+
+layout(location = 0) rayPayloadNV vec3 hitColor;
+
+void main() {
+    vec3 rayOrigin = vec3(0.0, 0.0, 0.0);  // Origen del rayo (ejemplo)
+    vec3 rayDirection = normalize(vec3(gl_LaunchIDNV.xy, 1.0) - rayOrigin);  // Dirección del rayo (ejemplo)
+
+    traceNV(topLevelAS, gl_RayFlagsNoneNV, 0xFF, 0, 1, 0, rayOrigin, 0.01, rayDirection, 1000.0, 0);
+    // Si el rayo impacta, hitColor estará modificado por el closest-hit shader
+}
+
+

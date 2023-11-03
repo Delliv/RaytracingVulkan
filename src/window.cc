@@ -89,7 +89,20 @@ void window::initialize_vulkan()
 	}
 
 
+
 	physical_devices();
+
+	// Imprimir las extensiones soportadas por el VkPhysicalDevice seleccionado
+	uint32_t extensionCount = 0;
+	vkEnumerateDeviceExtensionProperties(vk_physical_device_, nullptr, &extensionCount, nullptr);
+
+	std::vector<VkExtensionProperties> extensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(vk_physical_device_, nullptr, &extensionCount, extensions.data());
+
+	std::cout << "Extensiones soportadas:" << std::endl;
+	for (const auto& extension : extensions) {
+		std::cout << '\t' << extension.extensionName << std::endl;
+	}
 
 	//validation_layers();
 
@@ -100,6 +113,8 @@ void window::initialize_vulkan()
 	create_views();
 
 	render_pass();
+
+	
 }
 
 void window::validation_layers()
@@ -136,8 +151,10 @@ void window::validation_layers()
 void window::physical_devices()
 {
 	unsigned int n_devices = 0;
-	vkEnumeratePhysicalDevices(vk_instance_, &n_devices, nullptr);
-
+	VkResult res = vkEnumeratePhysicalDevices(vk_instance_, &n_devices, nullptr);
+	if (res != VK_SUCCESS) {
+		printf("%d", res);
+	}
 	if (n_devices == 0) {
 		throw std::runtime_error("Devices could not be found");
 	}
@@ -163,7 +180,6 @@ void window::physical_devices()
 
 
 }
-
 void window::logical_devices()
 {
 	if (glfwCreateWindowSurface(vk_instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
@@ -171,7 +187,7 @@ void window::logical_devices()
 	}
 
 	indices = findQueueFamilies(vk_physical_device_);
-	
+
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	float queue_priority = 1.0f;
 
@@ -193,24 +209,40 @@ void window::logical_devices()
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
 
+	VkPhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+	accelFeature.pNext = &rtPipelineFeature;
+
+	VkPhysicalDeviceFeatures2 deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+	deviceFeatures2.pNext = &accelFeature;
+
+	// Comprobación de soporte para ray tracing
+	vkGetPhysicalDeviceFeatures2(vk_physical_device_, &deviceFeatures2);
+	if (!accelFeature.accelerationStructure || !rtPipelineFeature.rayTracingPipeline) {
+		throw std::runtime_error("Ray tracing features are not supported on this device.");
+	}
 
 	VkPhysicalDeviceFeatures deviceFeatures{};
 	VkDeviceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	createInfo.pQueueCreateInfos = queueCreateInfos.data();
 	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-	createInfo.enabledExtensionCount = 1;
-	const char* deviceExtensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
-	createInfo.ppEnabledExtensionNames = deviceExtensions;
 
+	const std::vector<const char*> deviceExtensions = {
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
+	};
+
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 	createInfo.pEnabledFeatures = &deviceFeatures;
-
+	createInfo.pNext = &deviceFeatures2; // Añadir las características de ray tracing
 
 	if (vkCreateDevice(vk_physical_device_, &createInfo, nullptr, &vk_device_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create logical device!");
 	}
-
-
 
 	VkBool32 surfaceSupport = VK_FALSE;
 	vkGetPhysicalDeviceSurfaceSupportKHR(vk_physical_device_, indices.graphicsFamily.value(), surface_, &surfaceSupport);
@@ -218,7 +250,13 @@ void window::logical_devices()
 	if (surfaceSupport != VK_TRUE) {
 		throw std::runtime_error("El dispositivo físico no es compatible con la superficie de ventana.");
 	}
+
+	// Creación del cargador de Vulkan para raytracing
+	//vk_loader_.init();
+	
+
 }
+
 
 void window::create_presentation_queue_and_swapchain()
 {
@@ -285,9 +323,14 @@ void window::create_presentation_queue_and_swapchain()
 
 	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-	uint32_t queueFamilyIndices[] = {
+	/*uint32_t queueFamilyIndices[] = {
 		indices.graphicsFamily.value(),
 		indices.presentFamily.value()
+	};*/
+
+	uint32_t queueFamilyIndices[2] = {
+	indices.graphicsFamily.value(),
+	indices.presentFamily.value()
 	};
 
 	if (indices.graphicsFamily != indices.presentFamily) {
@@ -297,7 +340,9 @@ void window::create_presentation_queue_and_swapchain()
 	}
 	else {
 		swapchain_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		swapchain_info.pQueueFamilyIndices = nullptr;
+		uint32_t queueFamilyIndex = indices.graphicsFamily.value(); // Suponiendo que 'indices' es tu estructura de QueueFamilyIndices y que ya has encontrado las familias de colas
+		swapchain_info.queueFamilyIndexCount = 1;
+		swapchain_info.pQueueFamilyIndices = &queueFamilyIndex;
 	}
 
 	swapchain_info.preTransform = surfaceCapabilities.currentTransform;
@@ -314,9 +359,11 @@ void window::create_presentation_queue_and_swapchain()
 	swapchain_info.clipped = VK_TRUE;
 	swapchain_info.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
 
+	VkResult a = vkCreateSwapchainKHR(vk_device_, &swapchain_info, nullptr, &swapChain);
+	/*
 	if (vkCreateSwapchainKHR(vk_device_, &swapchain_info, nullptr, &swapChain) != VK_SUCCESS) {
 		throw std::runtime_error("Error while creating the swap chain.");
-	}
+	}*/
 
 }
 
@@ -443,59 +490,63 @@ void window::render_pass()
 
 void window::define_descriptors()
 {
-	descriptor_layout = {};
-	descriptor_layout.binding = 0;
-	descriptor_layout.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	descriptor_layout.descriptorCount = 1;
-	descriptor_layout.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+	// Binding para la estructura de aceleración (Acceleration Structure)
+	VkDescriptorSetLayoutBinding asLayoutBinding{};
+	asLayoutBinding.binding = 0;
+	asLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	asLayoutBinding.descriptorCount = 1;
+	asLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
 
-	layout_info = {};
-	layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layout_info.bindingCount = 1;
-	layout_info.pBindings = &descriptor_layout;
-	
-	if (vkCreateDescriptorSetLayout(vk_device_, &layout_info, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
+	// Binding para un Storage Buffer
+	VkDescriptorSetLayoutBinding storageBufferBinding{};
+	storageBufferBinding.binding = 1;
+	storageBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	storageBufferBinding.descriptorCount = 1;
+	storageBufferBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+
+	// Combinamos los bindings
+	std::array<VkDescriptorSetLayoutBinding, 2> bindings = { asLayoutBinding, storageBufferBinding };
+
+	// Información para el layout del set de descriptores
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+	layoutInfo.pBindings = bindings.data();
+
+	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfo, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor set layout!");
 	}
 
-	pool_size = {};
-	pool_size.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	pool_size.descriptorCount = 1;
-	
-	pool_info = {};
-	pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	pool_info.poolSizeCount = 1;
-	pool_info.pPoolSizes = &pool_size;
-	pool_info.maxSets = 1;
-	if (vkCreateDescriptorPool(vk_device_, &pool_info, nullptr, &descriptor_pool) != VK_SUCCESS) {
+	// Configuración del pool de descriptores
+	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	poolSizes[0].descriptorCount = 1;
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	poolSizes[1].descriptorCount = 1;
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = 1;
+
+	if (vkCreateDescriptorPool(vk_device_, &poolInfo, nullptr, &descriptor_pool) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor pool!");
 	}
 
+	// Alocación de sets de descriptores
 	layouts.push_back(descriptor_set_layout);
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = descriptor_pool;
 	allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
 	allocInfo.pSetLayouts = layouts.data();
+
 	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, &descriptor_set) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate descriptor sets!");
 	}
 
-	/*
-	* TO DO
-	VkDescriptorBufferInfo bufferInfo{};
-	bufferInfo.buffer = yourUniformBuffer;
-	bufferInfo.offset = 0;
-	bufferInfo.range = sizeof(YourUniformBufferObject);
-	VkWriteDescriptorSet descriptorWrite{};
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.dstSet = descriptorSet;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.pBufferInfo = &bufferInfo;
-	vkUpdateDescriptorSets(device, 1, &descriptorWrite, 0, nullptr);*/
+	// Una vez comience a generar las estructuras para la escena debo actualizar los descriptores aqui
 }
 
 void window::create_buffers()

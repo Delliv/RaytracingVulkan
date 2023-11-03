@@ -8,7 +8,7 @@
 #include <iostream>
 #include <string>
 #include <optional>
-
+#include "vulkan_loader.h"
 #ifndef window_class
 #define window_class 
 
@@ -90,6 +90,7 @@ public:
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 	friend class render;
+	friend class object;
 private:
 	// Window stuff
 	GLFWwindow* window_;
@@ -119,6 +120,8 @@ private:
 	VkSubpassDependency subpass_dependency;
 	std::array<VkAttachmentDescription, 1> attachments;
 	VkRenderPass render_pass_;
+
+	VkPhysicalDeviceProperties deviceProperties;
 
 	// Descriptors
 	VkDescriptorSetLayoutBinding descriptor_layout;
@@ -152,6 +155,9 @@ private:
 	bool supportsAsync;
 	bool presentWithCompositeAlphaSupported;
 
+
+	VulkanLoader vk_loader_;
+	
 };
 
 
