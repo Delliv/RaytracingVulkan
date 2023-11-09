@@ -79,6 +79,12 @@ public:
 	void create_command_buffers();
 	void record_command_buffers();
 
+	// Change these names
+	void createDescriptorSetLayout();
+	void createDescriptorPool();
+	void createDescriptorSets();
+	void updateDescriptorSets();
+
 	QueueFamilyIndices indices;
 	// Getters
 	GLFWwindow* get_window();
@@ -131,7 +137,19 @@ private:
 	VkDescriptorSetLayout descriptor_set_layout;
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSetLayout> layouts;
-	VkDescriptorSet descriptor_set;
+	std::vector<VkDescriptorSet> descriptors_set;
+	// Change these names
+	VkDescriptorSetLayout descriptorSetLayoutModelMatrix; // Para la matriz modelo
+	VkDescriptorSetLayout descriptorSetLayoutVertex;      // Para los vértices
+	std::vector<VkDescriptorSet> descriptorSetsModelMatrix;
+	std::vector<VkDescriptorSet> descriptorSetsVertex;
+	// Change these names
+	std::vector<VkBuffer> modelMatrixBuffers;
+	std::vector<VkDeviceMemory> modelMatrixBuffersMemory;
+
+	std::vector<VkBuffer> vertexBuffers;
+	std::vector<VkDeviceMemory> vertexBuffersMemory;
+
 
 	// Buffers
 	std::vector<VkBuffer> buffers_;

@@ -490,6 +490,7 @@ void window::render_pass()
 
 void window::define_descriptors()
 {
+	/*
 	// Binding para la estructura de aceleración (Acceleration Structure)
 	VkDescriptorSetLayoutBinding asLayoutBinding{};
 	asLayoutBinding.binding = 0;
@@ -545,7 +546,7 @@ void window::define_descriptors()
 	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, &descriptor_set) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate descriptor sets!");
 	}
-
+	*/
 	// Una vez comience a generar las estructuras para la escena debo actualizar los descriptores aqui
 }
 
@@ -629,6 +630,121 @@ void window::create_command_buffers()
 void window::record_command_buffers()
 {
 
+}
+
+void window::createDescriptorSetLayout()
+{
+	// Descriptor Set Layout para la matriz modelo
+	VkDescriptorSetLayoutBinding modelMatrixLayoutBinding{};
+	modelMatrixLayoutBinding.binding = 0;
+	modelMatrixLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	modelMatrixLayoutBinding.descriptorCount = 1;
+	modelMatrixLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfoModelMatrix{};
+	layoutInfoModelMatrix.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfoModelMatrix.bindingCount = 1;
+	layoutInfoModelMatrix.pBindings = &modelMatrixLayoutBinding;
+
+	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfoModelMatrix, nullptr, &descriptorSetLayoutModelMatrix) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor set layout for model matrix!");
+	}
+
+	// Descriptor Set Layout para la estructura Vertex
+	VkDescriptorSetLayoutBinding vertexLayoutBinding{};
+	vertexLayoutBinding.binding = 0;
+	vertexLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	vertexLayoutBinding.descriptorCount = 1;
+	vertexLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfoVertex{};
+	layoutInfoVertex.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfoVertex.bindingCount = 1;
+	layoutInfoVertex.pBindings = &vertexLayoutBinding;
+
+	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfoVertex, nullptr, &descriptorSetLayoutVertex) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor set layout for vertices!");
+	}
+}
+
+void window::createDescriptorPool()
+{
+	// Define el tamaño del pool basado en la cantidad de descriptores
+	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	poolSizes[0].descriptorCount = static_cast<uint32_t>(modelMatrixBuffers.size());
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	poolSizes[1].descriptorCount = static_cast<uint32_t>(vertexBuffers.size());
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = static_cast<uint32_t>(modelMatrixBuffers.size() + vertexBuffers.size());
+
+	if (vkCreateDescriptorPool(vk_device_, &poolInfo, nullptr, &descriptor_pool) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor pool!");
+	}
+}
+
+void window::createDescriptorSets()
+{
+	std::vector<VkDescriptorSetLayout> layouts(modelMatrixBuffers.size(), descriptorSetLayoutModelMatrix);
+	layouts.insert(layouts.end(), vertexBuffers.size(), descriptorSetLayoutVertex);
+
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = descriptor_pool;
+	allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
+	allocInfo.pSetLayouts = layouts.data();
+
+	descriptorSetsModelMatrix.resize(modelMatrixBuffers.size());
+	descriptorSetsVertex.resize(vertexBuffers.size());
+
+	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSetsModelMatrix.data()) != VK_SUCCESS ||
+		vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSetsVertex.data()) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate descriptor sets!");
+	}
+}
+
+void window::updateDescriptorSets()
+{
+	// Aquí actualizamos los descriptor sets con los buffers reales
+	for (size_t i = 0; i < modelMatrixBuffers.size(); ++i) {
+		VkDescriptorBufferInfo modelMatrixBufferInfo{};
+		modelMatrixBufferInfo.buffer = modelMatrixBuffers[i];
+		modelMatrixBufferInfo.offset = 0;
+		modelMatrixBufferInfo.range = sizeof(glm::mat4);
+
+		VkDescriptorBufferInfo vertexBufferInfo{};
+		vertexBufferInfo.buffer = vertexBuffers[i];
+		vertexBufferInfo.offset = 0;
+		vertexBufferInfo.range = sizeof(Vertex); // Debes reemplazar esto con el tamaño real de tus datos de vértices
+
+		// Información de escritura para la matriz modelo
+		VkWriteDescriptorSet descriptorWriteModelMatrix{};
+		descriptorWriteModelMatrix.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteModelMatrix.dstSet = descriptorSetsModelMatrix[i];
+		descriptorWriteModelMatrix.dstBinding = 0;
+		descriptorWriteModelMatrix.dstArrayElement = 0;
+		descriptorWriteModelMatrix.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descriptorWriteModelMatrix.descriptorCount = 1;
+		descriptorWriteModelMatrix.pBufferInfo = &modelMatrixBufferInfo;
+
+		// Información de escritura para los vértices
+		VkWriteDescriptorSet descriptorWriteVertex{};
+		descriptorWriteVertex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteVertex.dstSet = descriptorSetsVertex[i];
+		descriptorWriteVertex.dstBinding = 0;
+		descriptorWriteVertex.dstArrayElement = 0;
+		descriptorWriteVertex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptorWriteVertex.descriptorCount = 1;
+		descriptorWriteVertex.pBufferInfo = &vertexBufferInfo;
+
+		std::array<VkWriteDescriptorSet, 2> writeDescriptorSets = { descriptorWriteModelMatrix, descriptorWriteVertex };
+
+		vkUpdateDescriptorSets(vk_device_, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+	}
 }
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(

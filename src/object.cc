@@ -168,6 +168,20 @@ object::object(window* w)
 
 object::~object()
 {
+	if (acceleration_structure_ != VK_NULL_HANDLE) {
+		vkDestroyAccelerationStructureKHR(window_->vk_device_, acceleration_structure_, nullptr);
+		acceleration_structure_ = VK_NULL_HANDLE;
+	}
+
+	if (blas_buffer_ != VK_NULL_HANDLE) {
+		vkDestroyBuffer(window_->vk_device_, blas_buffer_, nullptr);
+		blas_buffer_ = VK_NULL_HANDLE;
+	}
+
+	if (blas_buffer_memory_ != VK_NULL_HANDLE) {
+		vkFreeMemory(window_->vk_device_, blas_buffer_memory_, nullptr);
+		blas_buffer_memory_ = VK_NULL_HANDLE;
+	}
 }
 
 void object::translate(const glm::vec3& offset)
@@ -187,6 +201,115 @@ void object::scale(const glm::vec3& scale)
 
 void object::create_BLAS()
 {
+	VkAccelerationStructureGeometryKHR geometry{};
+	geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
+	geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
+	geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT; 
+	geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_,vertex_buffer_);
+	geometry.geometry.triangles.vertexStride = sizeof(Vertex); 
+	geometry.geometry.triangles.maxVertex = vertex_.vertices.size(); 
+	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32; 
+	geometry.geometry.triangles.indexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_, index_buffer_);
+	geometry.geometry.triangles.transformData.deviceAddress = 0; 
+
+	VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
+	buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	buildInfo.geometryCount = 1; 
+	buildInfo.pGeometries = &geometry; 
+	buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR; 
+	buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR; 
+	buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
+
+	
+	VkAccelerationStructureBuildSizesInfoKHR sizeInfo{};
+	sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+
+	uint32_t maxPrimitiveCounts = vertex_.vertices.size() / 3;
+
+	vkGetAccelerationStructureBuildSizesKHR(
+		window_->vk_device_,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+		&buildInfo, 
+		&maxPrimitiveCounts, 
+		&sizeInfo 
+	);
+
+	//BLAS buffer;
+	VkBufferCreateInfo blas_buffer_info = {};
+	blas_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	blas_buffer_info.size = sizeInfo.accelerationStructureSize;
+	blas_buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+	blas_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(window_->vk_device_, &blas_buffer_info, nullptr, &blas_buffer_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create BLAS buffer!");
+	}
+
+	VkMemoryRequirements blas_memory_requirements;
+	vkGetBufferMemoryRequirements(window_->vk_device_, blas_buffer_, &blas_memory_requirements);
+
+	VkMemoryAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = blas_memory_requirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, blas_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &blas_buffer_memory_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate BLAS buffer memory!");
+	}
+	if (vkBindBufferMemory(window_->vk_device_, blas_buffer_, blas_buffer_memory_, 0) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to bind BLAS buffer memory!");
+	}
+
+	// Scrath buffer
+	VkBufferCreateInfo scratchBufferInfo{};
+	scratchBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	scratchBufferInfo.size = sizeInfo.buildScratchSize; 
+	scratchBufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT; 
+	scratchBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+;
+	if (vkCreateBuffer(window_->vk_device_, &scratchBufferInfo, nullptr, &scratch_buffer_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create scratch buffer!");
+	}
+
+	VkMemoryRequirements scratchMemoryRequirements;
+	vkGetBufferMemoryRequirements(window_->vk_device_, scratch_buffer_, &scratchMemoryRequirements);
+
+	VkMemoryAllocateInfo scratchAllocInfo{};
+	scratchAllocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	scratchAllocInfo.allocationSize = scratchMemoryRequirements.size;
+	scratchAllocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, scratchMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+	if (vkAllocateMemory(window_->vk_device_, &scratchAllocInfo, nullptr, &scratch_buffer_memory_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate scratch buffer memory!");
+	}
+
+	if (vkBindBufferMemory(window_->vk_device_, scratch_buffer_, scratch_buffer_memory_, 0) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to bind scratch buffer memory!");
+	}
+
+	VkDeviceAddress scratchBufferAddress = getBufferDeviceAddress(window_->vk_device_, scratch_buffer_);
+
+	buildInfo.scratchData.deviceAddress = scratchBufferAddress;
+
+
+
+	VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
+	accelerationStructureCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+	accelerationStructureCreateInfo.buffer = blas_buffer_; // El buffer para la BLAS
+	accelerationStructureCreateInfo.size = sizeInfo.accelerationStructureSize;
+	accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+
+	if (vkCreateAccelerationStructureKHR(window_->vk_device_, &accelerationStructureCreateInfo, nullptr, &acceleration_structure_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create acceleration structure!");
+	}
+	/*
+	vkDestroyBuffer(window_->vk_device_, scratch_buffer_, nullptr);
+	vkFreeMemory(window_->vk_device_, scratch_buffer_memory_, nullptr);
+
+	scratch_buffer_ = VK_NULL_HANDLE;
+	scratch_buffer_memory_ = VK_NULL_HANDLE;*/
 }
 
 void object::create_buffers()
@@ -256,6 +379,45 @@ void object::create_buffers()
 	if (vkBindBufferMemory(window_->vk_device_, index_buffer_, index_buffer_memory_, 0) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to bind index buffer memory!");
 	}
+
+	// Model buffer
+	VkDeviceSize bufferSize = sizeof(glm::mat4);
+
+	// Crear el buffer uniforme para la matriz modelo
+	VkBufferCreateInfo bufferInfo = {};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = bufferSize;
+	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(window_->vk_device_, &bufferInfo, nullptr, &model_buffer_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create model matrix buffer!");
+	}
+
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(window_->vk_device_, model_buffer_, &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &model_buffer_memory_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate model matrix buffer memory!");
+	}
+
+	if (vkBindBufferMemory(window_->vk_device_, model_buffer_, model_buffer_memory_, 0) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to bind model matrix buffer memory!");
+	}
+
+}
+
+void object::update_model_matrix_buffer()
+{
+	void* data;
+	vkMapMemory(window_->vk_device_, model_buffer_memory_, 0, sizeof(glm::mat4), 0, &data);
+	memcpy(data, &transform_, sizeof(glm::mat4));
+	vkUnmapMemory(window_->vk_device_, model_buffer_memory_);
 }
 
 uint32_t object::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
@@ -270,5 +432,13 @@ uint32_t object::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFi
 	}
 
 	throw std::runtime_error("Failed to find suitable memory type!");
+}
+
+VkDeviceAddress object::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
+{
+	VkBufferDeviceAddressInfo bufferDeviceAI{};
+	bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	bufferDeviceAI.buffer = buffer;
+	return vkGetBufferDeviceAddress(device, &bufferDeviceAI);
 }
 

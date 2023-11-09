@@ -27,10 +27,10 @@ void render::create_command_pool()
 {
 	VkCommandPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	if (window_->indices.graphicsFamily.has_value()) {
 		poolInfo.queueFamilyIndex = window_->indices.graphicsFamily.value();
 	}
-	poolInfo.flags = 0;
 
 	if (vkCreateCommandPool(window_->vk_device_, &poolInfo, nullptr, &command_pool_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create command pool!");
@@ -56,7 +56,17 @@ void render::create_command_buffers()
 
 void render::record_command_buffers()
 {
+	VkCommandBufferBeginInfo beginInfo = {};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+	for (size_t i = 0; i < window_->swap_chain_images.size(); i++) {
+		vkBeginCommandBuffer(command_buffers.at(i), &beginInfo);
+
+		
+
+		vkEndCommandBuffer(command_buffers.at(i));
+	}
 }
 
 void render::create_pipeline()
