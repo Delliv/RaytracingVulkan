@@ -95,6 +95,8 @@ public:
 	void allocate_memory_for_buffers(VkBuffer* buffer, VkDeviceMemory* buffer_memory, const void* data, VkDeviceSize data_size);
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
+	std::vector<object> scene_objects_;
+
 	friend class render;
 	friend class object;
 private:
@@ -138,11 +140,17 @@ private:
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSetLayout> layouts;
 	std::vector<VkDescriptorSet> descriptors_set;
+	std::vector<VkDescriptorSet> descriptorSets;
+
 	// Change these names
 	VkDescriptorSetLayout descriptorSetLayoutModelMatrix; // Para la matriz modelo
 	VkDescriptorSetLayout descriptorSetLayoutVertex;      // Para los vértices
+	VkDescriptorSetLayout descriptorSetLayoutBLAS;      // Para los vértices
+
 	std::vector<VkDescriptorSet> descriptorSetsModelMatrix;
 	std::vector<VkDescriptorSet> descriptorSetsVertex;
+	std::vector<VkDescriptorSet> descriptorSetsBLAS;
+
 	// Change these names
 	std::vector<VkBuffer> modelMatrixBuffers;
 	std::vector<VkDeviceMemory> modelMatrixBuffersMemory;

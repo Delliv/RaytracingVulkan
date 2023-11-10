@@ -634,7 +634,7 @@ void window::record_command_buffers()
 
 void window::createDescriptorSetLayout()
 {
-	// Descriptor Set Layout para la matriz modelo
+	// Layout para la matriz modelo
 	VkDescriptorSetLayoutBinding modelMatrixLayoutBinding{};
 	modelMatrixLayoutBinding.binding = 0;
 	modelMatrixLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -650,7 +650,7 @@ void window::createDescriptorSetLayout()
 		throw std::runtime_error("Failed to create descriptor set layout for model matrix!");
 	}
 
-	// Descriptor Set Layout para la estructura Vertex
+	// Layout para la estructura Vertex
 	VkDescriptorSetLayoutBinding vertexLayoutBinding{};
 	vertexLayoutBinding.binding = 0;
 	vertexLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -665,6 +665,23 @@ void window::createDescriptorSetLayout()
 	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfoVertex, nullptr, &descriptorSetLayoutVertex) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create descriptor set layout for vertices!");
 	}
+
+	// Layout para la BLAS
+	VkDescriptorSetLayoutBinding blasLayoutBinding{};
+	blasLayoutBinding.binding = 0;
+	blasLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	blasLayoutBinding.descriptorCount = 1;
+	blasLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfoBLAS{};
+	layoutInfoBLAS.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfoBLAS.bindingCount = 1;
+	layoutInfoBLAS.pBindings = &blasLayoutBinding;
+
+	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfoBLAS, nullptr, &descriptorSetLayoutBLAS) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor set layout for BLAS!");
+	}
+	
 }
 
 void window::createDescriptorPool()
@@ -686,11 +703,19 @@ void window::createDescriptorPool()
 		throw std::runtime_error("Failed to create descriptor pool!");
 	}
 }
+void window::createDescriptorSets() {
+	// Calcular el número total de sets de descriptores necesarios
+	size_t totalDescriptorSets = scene_objects_.size() * 3; // 3 sets por objeto (modelo, vértices, BLAS)
 
-void window::createDescriptorSets()
-{
-	std::vector<VkDescriptorSetLayout> layouts(modelMatrixBuffers.size(), descriptorSetLayoutModelMatrix);
-	layouts.insert(layouts.end(), vertexBuffers.size(), descriptorSetLayoutVertex);
+	// Crear un vector de layouts con el tamaño calculado
+	std::vector<VkDescriptorSetLayout> layouts(totalDescriptorSets);
+
+	// Rellenar el vector con los layouts correspondientes
+	for (size_t i = 0; i < scene_objects_.size(); ++i) {
+		layouts[i * 3] = descriptorSetLayoutModelMatrix;
+		layouts[i * 3 + 1] = descriptorSetLayoutVertex;
+		layouts[i * 3 + 2] = descriptorSetLayoutBLAS;
+	}
 
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -698,52 +723,119 @@ void window::createDescriptorSets()
 	allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
 	allocInfo.pSetLayouts = layouts.data();
 
-	descriptorSetsModelMatrix.resize(modelMatrixBuffers.size());
-	descriptorSetsVertex.resize(vertexBuffers.size());
-
-	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSetsModelMatrix.data()) != VK_SUCCESS ||
-		vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSetsVertex.data()) != VK_SUCCESS) {
+	std::vector<VkDescriptorSet> descriptorSets(totalDescriptorSets);
+	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate descriptor sets!");
 	}
-}
 
-void window::updateDescriptorSets()
-{
-	// Aquí actualizamos los descriptor sets con los buffers reales
-	for (size_t i = 0; i < modelMatrixBuffers.size(); ++i) {
+	// Actualiza los descriptor sets con los buffers de cada objeto
+	for (size_t i = 0; i < scene_objects_.size(); ++i) {
+		auto& obj = scene_objects_[i];
+
+		// Actualizar el descriptor set para la matriz modelo
 		VkDescriptorBufferInfo modelMatrixBufferInfo{};
-		modelMatrixBufferInfo.buffer = modelMatrixBuffers[i];
+		modelMatrixBufferInfo.buffer = obj->modelMatrixBuffer; // Reemplaza esto con el buffer real de la matriz modelo
 		modelMatrixBufferInfo.offset = 0;
 		modelMatrixBufferInfo.range = sizeof(glm::mat4);
 
-		VkDescriptorBufferInfo vertexBufferInfo{};
-		vertexBufferInfo.buffer = vertexBuffers[i];
-		vertexBufferInfo.offset = 0;
-		vertexBufferInfo.range = sizeof(Vertex); // Debes reemplazar esto con el tamaño real de tus datos de vértices
-
-		// Información de escritura para la matriz modelo
 		VkWriteDescriptorSet descriptorWriteModelMatrix{};
 		descriptorWriteModelMatrix.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteModelMatrix.dstSet = descriptorSetsModelMatrix[i];
+		descriptorWriteModelMatrix.dstSet = descriptorSets[i * 3];
 		descriptorWriteModelMatrix.dstBinding = 0;
 		descriptorWriteModelMatrix.dstArrayElement = 0;
 		descriptorWriteModelMatrix.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		descriptorWriteModelMatrix.descriptorCount = 1;
 		descriptorWriteModelMatrix.pBufferInfo = &modelMatrixBufferInfo;
 
-		// Información de escritura para los vértices
+		// Actualizar el descriptor set para los vértices
+		VkDescriptorBufferInfo vertexBufferInfo{};
+		vertexBufferInfo.buffer = obj->vertexBuffer; // Reemplaza esto con el buffer real de los vértices
+		vertexBufferInfo.offset = 0;
+		vertexBufferInfo.range = sizeof(Vertex); // Asegúrate de que esto coincida con el tamaño real de tus datos de vértices
+
 		VkWriteDescriptorSet descriptorWriteVertex{};
 		descriptorWriteVertex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteVertex.dstSet = descriptorSetsVertex[i];
+		descriptorWriteVertex.dstSet = descriptorSets[i * 3 + 1];
 		descriptorWriteVertex.dstBinding = 0;
 		descriptorWriteVertex.dstArrayElement = 0;
 		descriptorWriteVertex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 		descriptorWriteVertex.descriptorCount = 1;
 		descriptorWriteVertex.pBufferInfo = &vertexBufferInfo;
 
-		std::array<VkWriteDescriptorSet, 2> writeDescriptorSets = { descriptorWriteModelMatrix, descriptorWriteVertex };
+		// Actualizar el descriptor set para la BLAS
+		VkWriteDescriptorSetAccelerationStructureKHR asWrite{};
+		asWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		asWrite.accelerationStructureCount = 1;
+		asWrite.pAccelerationStructures = &obj->acceleration_structure_; // Reemplaza esto con el handle real de la BLAS
+
+		VkWriteDescriptorSet descriptorWriteBLAS{};
+		descriptorWriteBLAS.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteBLAS.dstSet = descriptorSets[i * 3 + 2];
+		descriptorWriteBLAS.dstBinding = 0;
+		descriptorWriteBLAS.dstArrayElement = 0;
+		descriptorWriteBLAS.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		descriptorWriteBLAS.descriptorCount = 1;
+		descriptorWriteBLAS.pNext = &asWrite;
+
+		std::array<VkWriteDescriptorSet, 3> writeDescriptorSets = { descriptorWriteModelMatrix, descriptorWriteVertex, descriptorWriteBLAS };
+		vkUpdateDescriptorSets(vk_device_, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+	}
+}
+
+
+void window::updateDescriptorSets()
+{
+	for (size_t i = 0; i < scene_objects_.size(); ++i) {
+		// Actualizar el descriptor set para la matriz modelo
+		// (suponiendo que el primer conjunto de descriptorSetsModelMatrix está en el índice 0)
+		VkDescriptorBufferInfo modelMatrixBufferInfo{};
+		modelMatrixBufferInfo.buffer = scene_objects_[i].modelMatrixBuffer;
+		modelMatrixBufferInfo.offset = 0;
+		modelMatrixBufferInfo.range = sizeof(glm::mat4);
+
+		VkWriteDescriptorSet descriptorWriteModelMatrix{};
+		descriptorWriteModelMatrix.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteModelMatrix.dstSet = descriptorSets[i]; // Aquí asumimos que i corresponde al descriptor set correcto
+		descriptorWriteModelMatrix.dstBinding = 0;
+		descriptorWriteModelMatrix.dstArrayElement = 0;
+		descriptorWriteModelMatrix.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descriptorWriteModelMatrix.descriptorCount = 1;
+		descriptorWriteModelMatrix.pBufferInfo = &modelMatrixBufferInfo;
+
+		// Actualizar el descriptor set para los datos de vértices
+		VkDescriptorBufferInfo vertexBufferInfo{};
+		vertexBufferInfo.buffer = scene_objects_[i].vertexBuffer;
+		vertexBufferInfo.offset = 0;
+		vertexBufferInfo.range = VK_WHOLE_SIZE; // O el tamaño específico de tus datos de vértices
+
+		VkWriteDescriptorSet descriptorWriteVertex{};
+		descriptorWriteVertex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteVertex.dstSet = descriptorSets[scene_objects_.size() + i]; // Asumiendo que los descriptor sets de vértices siguen a los de matriz modelo
+		descriptorWriteVertex.dstBinding = 0;
+		descriptorWriteVertex.dstArrayElement = 0;
+		descriptorWriteVertex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		descriptorWriteVertex.descriptorCount = 1;
+		descriptorWriteVertex.pBufferInfo = &vertexBufferInfo;
+
+
+		VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
+		descriptorAccelerationStructureInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+		descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
+		descriptorAccelerationStructureInfo.pAccelerationStructures = &scene_objects_[i].acceleration_structure_;
+
+		VkWriteDescriptorSet descriptorWriteBLAS{};
+		descriptorWriteBLAS.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWriteBLAS.dstSet = descriptorSets[2 * scene_objects_.size() + i]; // Asumiendo que los descriptor sets de BLAS siguen a los de matriz modelo y vértices
+		descriptorWriteBLAS.dstBinding = 0;
+		descriptorWriteBLAS.dstArrayElement = 0;
+		descriptorWriteBLAS.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+		descriptorWriteBLAS.descriptorCount = 1;
+		descriptorWriteBLAS.pNext = &descriptorAccelerationStructureInfo; // Puntero a la información de la estructura de aceleración
+
+		std::array<VkWriteDescriptorSet, 3> writeDescriptorSets = { descriptorWriteModelMatrix, descriptorWriteVertex, descriptorWriteBLAS };
 
 		vkUpdateDescriptorSets(vk_device_, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
+
 	}
 }
 
