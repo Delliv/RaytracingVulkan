@@ -5,6 +5,7 @@ window::window()
 	// Create window with GLFW
 	width_ = 800;
 	height_ = 600;
+	blas_id_ = 0;
 	if (!glfwInit()) {
 		throw std::runtime_error("Error initializating GLFW");
 	}
@@ -599,13 +600,11 @@ void window::create_command_pool()
 {
 	VkCommandPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 	if (indices.graphicsFamily.has_value()) {
 		poolInfo.queueFamilyIndex = indices.graphicsFamily.value();
 	}
-	poolInfo.flags = 0;
-
-	VkCommandPool commandPool;
-	if (vkCreateCommandPool(vk_device_, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+	if (vkCreateCommandPool(vk_device_, &poolInfo, nullptr, &command_pool_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create command pool!");
 	}
 }
@@ -630,6 +629,41 @@ void window::create_command_buffers()
 void window::record_command_buffers()
 {
 
+}
+
+void window::create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+{
+	VkBufferCreateInfo bufferInfo{};
+	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferInfo.size = size;
+	bufferInfo.usage = usage;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(vk_device_, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create buffer!");
+	}
+
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(vk_device_, buffer, &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+	if (vkAllocateMemory(vk_device_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate buffer memory!");
+	}
+
+	vkBindBufferMemory(vk_device_, buffer, bufferMemory, 0);
+}
+
+VkDeviceAddress window::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
+{
+	VkBufferDeviceAddressInfo bufferDeviceAI{};
+	bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+	bufferDeviceAI.buffer = buffer;
+	return vkGetBufferDeviceAddress(device, &bufferDeviceAI);
 }
 
 void window::createDescriptorSetLayout()
@@ -734,7 +768,7 @@ void window::createDescriptorSets() {
 
 		// Actualizar el descriptor set para la matriz modelo
 		VkDescriptorBufferInfo modelMatrixBufferInfo{};
-		modelMatrixBufferInfo.buffer = obj->modelMatrixBuffer; // Reemplaza esto con el buffer real de la matriz modelo
+		modelMatrixBufferInfo.buffer = obj.model_buffer_; // Reemplaza esto con el buffer real de la matriz modelo
 		modelMatrixBufferInfo.offset = 0;
 		modelMatrixBufferInfo.range = sizeof(glm::mat4);
 
@@ -749,7 +783,7 @@ void window::createDescriptorSets() {
 
 		// Actualizar el descriptor set para los vértices
 		VkDescriptorBufferInfo vertexBufferInfo{};
-		vertexBufferInfo.buffer = obj->vertexBuffer; // Reemplaza esto con el buffer real de los vértices
+		vertexBufferInfo.buffer = obj.vertex_buffer_; // Reemplaza esto con el buffer real de los vértices
 		vertexBufferInfo.offset = 0;
 		vertexBufferInfo.range = sizeof(Vertex); // Asegúrate de que esto coincida con el tamaño real de tus datos de vértices
 
@@ -766,7 +800,7 @@ void window::createDescriptorSets() {
 		VkWriteDescriptorSetAccelerationStructureKHR asWrite{};
 		asWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 		asWrite.accelerationStructureCount = 1;
-		asWrite.pAccelerationStructures = &obj->acceleration_structure_; // Reemplaza esto con el handle real de la BLAS
+		asWrite.pAccelerationStructures = &obj.acceleration_structure_; // Reemplaza esto con el handle real de la BLAS
 
 		VkWriteDescriptorSet descriptorWriteBLAS{};
 		descriptorWriteBLAS.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -789,7 +823,7 @@ void window::updateDescriptorSets()
 		// Actualizar el descriptor set para la matriz modelo
 		// (suponiendo que el primer conjunto de descriptorSetsModelMatrix está en el índice 0)
 		VkDescriptorBufferInfo modelMatrixBufferInfo{};
-		modelMatrixBufferInfo.buffer = scene_objects_[i].modelMatrixBuffer;
+		modelMatrixBufferInfo.buffer = scene_objects_[i].model_buffer_;
 		modelMatrixBufferInfo.offset = 0;
 		modelMatrixBufferInfo.range = sizeof(glm::mat4);
 
@@ -804,7 +838,7 @@ void window::updateDescriptorSets()
 
 		// Actualizar el descriptor set para los datos de vértices
 		VkDescriptorBufferInfo vertexBufferInfo{};
-		vertexBufferInfo.buffer = scene_objects_[i].vertexBuffer;
+		vertexBufferInfo.buffer = scene_objects_[i].vertex_buffer_;
 		vertexBufferInfo.offset = 0;
 		vertexBufferInfo.range = VK_WHOLE_SIZE; // O el tamaño específico de tus datos de vértices
 
@@ -836,6 +870,133 @@ void window::updateDescriptorSets()
 
 		vkUpdateDescriptorSets(vk_device_, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
 
+	}
+}
+void window::create_TLAS() {
+	// Store the instances for the BLAS that will be used in the TLAS
+	std::vector<VkAccelerationStructureInstanceKHR> vkInstances(scene_objects_.size());
+
+	// Prepare the BLAS instances for inclusion in the TLAS
+	for (size_t i = 0; i < scene_objects_.size(); ++i) {
+		auto& obj = scene_objects_[i];
+
+		// Reference to the current instance to be updated
+		VkAccelerationStructureInstanceKHR& vkInstance = vkInstances[i];
+
+		// Convert glm::mat4 to VkTransformMatrixKHR by transposing it to match Vulkan's layout
+		glm::mat4x3 transposed = glm::transpose(obj.get_matrix());
+		memcpy(&vkInstance.transform, &transposed, sizeof(VkTransformMatrixKHR));
+
+		// Fill the remaining fields for the instance
+		vkInstance.instanceCustomIndex = obj.blas_id_; // A unique identifier for this instance.
+		vkInstance.mask = 0xFF; // The visibility mask for the instance.
+		vkInstance.instanceShaderBindingTableRecordOffset = 0; // The offset into the shader binding table.
+		vkInstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR; // Instance flags.
+		vkInstance.accelerationStructureReference = obj.getBLASDeviceAddress(vk_device_); // The BLAS reference.
+	}
+
+	// Create the buffer for the TLAS instances
+	VkDeviceSize instanceBufferSize = sizeof(VkAccelerationStructureInstanceKHR) * vkInstances.size();
+	VkBuffer instancesBuffer;
+	VkDeviceMemory instancesBufferMemory;
+	create_buffer(
+		instanceBufferSize,
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		instancesBuffer,
+		instancesBufferMemory
+	);
+
+	// Copy the BLAS instance data into the TLAS buffer
+	void* data;
+	vkMapMemory(vk_device_, instancesBufferMemory, 0, instanceBufferSize, 0, &data);
+	memcpy(data, vkInstances.data(), (size_t)instanceBufferSize);
+	vkUnmapMemory(vk_device_, instancesBufferMemory);
+
+	// Create a VkAccelerationStructureBuildGeometryInfoKHR for the TLAS
+	VkAccelerationStructureGeometryKHR tlasGeometry{};
+	tlasGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
+	tlasGeometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
+	tlasGeometry.geometry.instances.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR;
+	tlasGeometry.geometry.instances.arrayOfPointers = VK_FALSE;
+	tlasGeometry.geometry.instances.data.deviceAddress = getBufferDeviceAddress(vk_device_, instancesBuffer);
+
+	// Structure to hold TLAS build info
+	VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
+	buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+	buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+	buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+	buildInfo.geometryCount = 1;
+	buildInfo.pGeometries = &tlasGeometry;
+
+	// Get the build sizes for the TLAS
+	uint32_t instanceCount = static_cast<uint32_t>(vkInstances.size());
+	VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo{};
+	buildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+	vkGetAccelerationStructureBuildSizesKHR(
+		vk_device_,
+		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+		&buildInfo,
+		&instanceCount,
+		&buildSizesInfo
+	);
+
+	// Create the buffer and memory for the TLAS
+	VkBuffer tlasBuffer;
+	VkDeviceMemory tlasBufferMemory;
+	create_buffer(
+		buildSizesInfo.accelerationStructureSize,
+		VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		tlasBuffer,
+		tlasBufferMemory
+	);
+
+	// Create the acceleration structure for the TLAS
+	VkAccelerationStructureCreateInfoKHR accelerationStructureCreate{};
+	accelerationStructureCreate.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+	accelerationStructureCreate.buffer = tlasBuffer;
+	accelerationStructureCreate.size = buildSizesInfo.accelerationStructureSize;
+	accelerationStructureCreate.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+
+	// Initialize the TLAS
+	VkAccelerationStructureKHR tlas;
+	if (vkCreateAccelerationStructureKHR(vk_device_, &accelerationStructureCreate, nullptr, &tlas) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create TLAS!");
+	}
+
+	// Build the TLAS using the provided command buffer
+	for (auto& obj : scene_objects_) {
+		VkAccelerationStructureBuildGeometryInfoKHR tlasBuildInfo = buildInfo;
+		tlasBuildInfo.dstAccelerationStructure = tlas;
+		tlasBuildInfo.scratchData.deviceAddress = getBufferDeviceAddress(vk_device_, obj.scratch_buffer_); // Assuming scratchBuffer has already been created.
+
+		// Define the range of geometries to build
+		VkAccelerationStructureBuildRangeInfoKHR tlasBuildRangeInfo{};
+		tlasBuildRangeInfo.primitiveCount = instanceCount;
+
+		// Assume you're building the TLAS on the GPU and have already set up a commandBuffer
+		VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &tlasBuildRangeInfo;
+		vkCmdBuildAccelerationStructuresKHR(
+			command_buffers.at(0), // The VkCommandBuffer that is recording the commands.
+			1, // The number of acceleration structures to build.
+			&tlasBuildInfo, // Build information for the TLAS.
+			&pTlasBuildRangeInfo // Range information for the TLAS build.
+		);
+	}
+
+}
+
+
+
+uint32_t window::give_blas_id()
+{
+	if (blas_id_ == 0) {
+		return blas_id_;
+	}
+	else {
+		blas_id_++;
+		return blas_id_;
 	}
 }
 

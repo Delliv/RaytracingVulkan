@@ -26,6 +26,7 @@ public:
 	uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 
+	VkDeviceAddress getBLASDeviceAddress(VkDevice d);
 	VkBuffer vertex_buffer_;
 	VkDeviceMemory vertex_buffer_memory_;
 	VkBuffer index_buffer_;
@@ -41,6 +42,7 @@ public:
 	VkDeviceMemory scratch_buffer_memory_;
 
 	VkAccelerationStructureKHR acceleration_structure_;
+	uint32_t blas_id_;
 private:
 	glm::mat4 transform_;
 	Vertex vertex_;

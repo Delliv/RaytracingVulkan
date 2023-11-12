@@ -80,11 +80,13 @@ object::object()
 		 16, 17, 18, 18, 19, 16, // Right
 		 20, 21, 22, 22, 23, 20  // Left
 	};
+
 }
 
 object::object(window* w)
 {
 	window_ = w;
+	blas_id_ = window_->give_blas_id();
 
 	transform_ = glm::mat4(1.0);
 
@@ -440,5 +442,14 @@ VkDeviceAddress object::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
 	bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	bufferDeviceAI.buffer = buffer;
 	return vkGetBufferDeviceAddress(device, &bufferDeviceAI);
+}
+
+VkDeviceAddress object::getBLASDeviceAddress(VkDevice d)
+{
+	VkAccelerationStructureDeviceAddressInfoKHR addressInfo{};
+	addressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+	addressInfo.accelerationStructure = acceleration_structure_; // Asegúrate de que 'acceleration_structure_' sea la BLAS de este objeto
+
+	return vkGetAccelerationStructureDeviceAddressKHR(d, &addressInfo);
 }
 

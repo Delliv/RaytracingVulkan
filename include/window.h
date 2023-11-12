@@ -9,6 +9,8 @@
 #include <string>
 #include <optional>
 #include "vulkan_loader.h"
+#include "object.h"
+
 #ifndef window_class
 #define window_class 
 
@@ -78,13 +80,16 @@ public:
 	void create_command_pool();
 	void create_command_buffers();
 	void record_command_buffers();
-
+	void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 	// Change these names
 	void createDescriptorSetLayout();
 	void createDescriptorPool();
 	void createDescriptorSets();
 	void updateDescriptorSets();
 
+	void create_TLAS();
+	uint32_t give_blas_id();
 	QueueFamilyIndices indices;
 	// Getters
 	GLFWwindow* get_window();
@@ -170,7 +175,7 @@ private:
 
 	// Command pool and command buffers
 	VkCommandPool command_pool_;
-	std::vector<VkCommandBuffer> command_buffers;
+	std::vector<VkCommandBuffer> command_buffers; // first CB to create the acceleration structures . second CB for the rest
 	// Views
 	std::vector<VkImageView> vk_image_views;
 	uint32_t minImgCount;
@@ -184,6 +189,12 @@ private:
 
 	VulkanLoader vk_loader_;
 	
+	// TLAS
+	uint32_t blas_id_;
+	std::vector<BLASInstance> blas_instances_;
+	std::vector<VkAccelerationStructureInstanceKHR> vk_acceleration_structure_instances_;
+	VkBuffer TLAS_buffer_;
+	VkDeviceMemory TLAS_memory_buffer_;
 };
 
 

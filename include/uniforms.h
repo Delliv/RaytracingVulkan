@@ -17,4 +17,14 @@ struct Vertex {
     glm::uvec2 blasHandle;
 };
 
+struct BLASInstance {
+    uint32_t id_;
+    glm::mat4x4 transform_;
+
+    uint32_t mask_;
+    uint32_t intance_shader_binding_table_record_offset_;
+    VkGeometryInstanceFlagsKHR flags_;
+    VkDeviceAddress accelerationStructureReference;
+};
+
 #endif
