@@ -17,57 +17,29 @@ render::render(window* w)
 	if (!pfnVkCreateRayTracingPipelinesKHR) {
 		throw std::runtime_error("Failed to load vkCreateRayTracingPipelinesKHR");
 	}
+	pfnVkGetRayTracingShaderGroupHandlesKHR = (PFN_vkGetRayTracingShaderGroupHandlesKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetRayTracingShaderGroupHandlesKHR");
+	pfnVkCmdBuildAccelerationStructuresKHR = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkCmdBuildAccelerationStructuresKHR");
+	pfnVkCmdTraceRaysKHR = (PFN_vkCmdTraceRaysKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkCmdTraceRaysKHR");
+
+	VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProperties = {};
+	rtProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+
+	// Crear la estructura para las propiedades del dispositivo físico
+	VkPhysicalDeviceProperties2 deviceProperties2 = {};
+	deviceProperties2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	deviceProperties2.pNext = &rtProperties;
+
+	// Obtener las propiedades del dispositivo físico
+	vkGetPhysicalDeviceProperties2(window_->vk_physical_device_, &deviceProperties2);
+
+	// Ahora puedes acceder a las propiedades específicas de ray tracing
+	stride_size_ = rtProperties.shaderGroupBaseAlignment;
 }
 
 render::~render()
 {
 }
 
-void render::create_command_pool()
-{
-	VkCommandPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	if (window_->indices.graphicsFamily.has_value()) {
-		poolInfo.queueFamilyIndex = window_->indices.graphicsFamily.value();
-	}
-
-	if (vkCreateCommandPool(window_->vk_device_, &poolInfo, nullptr, &command_pool_) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create command pool!");
-	}
-}
-
-void render::create_command_buffers()
-{
-	command_buffers.resize(window_->swap_chain_images.size());
-
-	VkCommandBufferAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = command_pool_;
-	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = 1;
-
-	for (size_t i = 0; i < window_->swap_chain_images.size(); i++) {
-		if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, &command_buffers.at(i)) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate command buffers!");
-		}
-	}
-}
-
-void render::record_command_buffers()
-{
-	VkCommandBufferBeginInfo beginInfo = {};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	for (size_t i = 0; i < window_->swap_chain_images.size(); i++) {
-		vkBeginCommandBuffer(command_buffers.at(i), &beginInfo);
-
-		
-
-		vkEndCommandBuffer(command_buffers.at(i));
-	}
-}
 
 void render::create_pipeline()
 {
@@ -230,6 +202,19 @@ void render::create_raytracing_buffers()
 
 }
 
+uint32_t render::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+{
+	VkPhysicalDeviceMemoryProperties memProperties;
+	vkGetPhysicalDeviceMemoryProperties(window_->vk_physical_device_, &memProperties);
+
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
+			return i;
+		}
+	}
+
+	throw std::runtime_error("failed to find suitable memory type!");
+}
 VkShaderModule render::createShaderModule(VkDevice device, const std::vector<char>& code)
 {
 	VkShaderModuleCreateInfo createInfo{};
@@ -246,6 +231,57 @@ VkShaderModule render::createShaderModule(VkDevice device, const std::vector<cha
 
 	return shaderModule;
 }
+void render::create_SBT_buffer()
+{
+	// Calcular el tamaño del SBT
+	SBT_size_ = stride_size_ * 3; // Tres shaders: raygen, miss y hit
+
+	// Crear el buffer
+	VkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+	bufferInfo.size = SBT_size_;
+	bufferInfo.usage = VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+	if (vkCreateBuffer(window_->vk_device_, &bufferInfo, nullptr, &SBT_buffer_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create SBT buffer!");
+	}
+
+	// Obtener los requerimientos de memoria para el buffer
+	VkMemoryRequirements memRequirements;
+	vkGetBufferMemoryRequirements(window_->vk_device_, SBT_buffer_, &memRequirements);
+
+	// Información para la asignación de memoria
+	VkMemoryAllocateInfo allocInfo = {};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+	// Asignar memoria
+	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &SBT_buffer_memory_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate buffer memory!");
+	}
+
+	// Vincular memoria al buffer
+	vkBindBufferMemory(window_->vk_device_, SBT_buffer_, SBT_buffer_memory_, 0);
+
+	const uint32_t groupCount = 3; // Raygen, Miss, Hit
+	std::vector<uint8_t> shaderHandleStorage(groupCount * stride_size_);
+	if (pfnVkGetRayTracingShaderGroupHandlesKHR(window_->vk_device_, pipeline_, 0, groupCount, shaderHandleStorage.size(), shaderHandleStorage.data()) != VK_SUCCESS) {
+		throw std::runtime_error("failed to get ray tracing shader group handles");
+	}
+
+	// Mapear y rellenar el buffer del SBT
+	void* mappedData;
+	vkMapMemory(window_->vk_device_, SBT_buffer_memory_, 0, SBT_size_, 0, &mappedData);
+
+	// Copiar las direcciones de los shaders al buffer del SBT
+	memcpy((char*)mappedData + 0 * stride_size_, shaderHandleStorage.data() + 0 * stride_size_, stride_size_); // Raygen
+	memcpy((char*)mappedData + 1 * stride_size_, shaderHandleStorage.data() + 1 * stride_size_, stride_size_); // Miss
+	memcpy((char*)mappedData + 2 * stride_size_, shaderHandleStorage.data() + 2 * stride_size_, stride_size_); // Hit
+
+	vkUnmapMemory(window_->vk_device_, SBT_buffer_memory_);
+}
+
 
 std::vector<char> render::readFile(const std::string& filename) {
 	std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -259,4 +295,126 @@ std::vector<char> render::readFile(const std::string& filename) {
 }
 
 
+void render::create_command_pool()
+{
+	VkCommandPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	if (window_->indices.graphicsFamily.has_value()) {
+		poolInfo.queueFamilyIndex = window_->indices.graphicsFamily.value();
+	}
+	if (vkCreateCommandPool(window_->vk_device_, &poolInfo, nullptr, &command_pool_) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create command pool!");
+	}
 
+}
+
+void render::create_command_buffers()
+{
+	command_buffers.resize(window_->swap_chain_images.size());
+
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = command_pool_;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = 1;
+
+	for (size_t i = 0; i < window_->swap_chain_images.size(); i++) {
+		if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, &command_buffers.at(i)) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
+	}
+}
+
+void render::record_command_buffers()
+{
+	command_buffers.resize(window_->swap_chain_images.size());
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = command_pool_;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandBufferCount = static_cast<uint32_t>(command_buffers.size());
+
+	if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, command_buffers.data()) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate command buffers!");
+	}
+
+
+	for (size_t i = 0; i < command_buffers.size(); i++) {
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+
+		if (vkBeginCommandBuffer(command_buffers[i], &beginInfo) != VK_SUCCESS) {
+			throw std::runtime_error("failed to begin recording command buffer!");
+		}
+
+		// Aquí asumimos que ya tienes preparada la información de construcción de la TLAS
+		VkAccelerationStructureBuildGeometryInfoKHR tlasBuildInfo = window_->VkAccelerationStructureBuildGeometryInfoKHR_info_;
+		// Configura tlasBuildInfo según lo que hiciste en create_TLAS()
+		uint32_t instanceCount = static_cast<uint32_t>(window_->blas_instances_.size());
+		VkAccelerationStructureBuildRangeInfoKHR tlasRangeInfo{};
+		tlasRangeInfo.primitiveCount = instanceCount;  // El número de instancias
+		tlasRangeInfo.primitiveOffset = 0;             // Offset de la primera instancia
+		tlasRangeInfo.firstVertex = 0;                 // Usualmente 0 para TLAS
+		tlasRangeInfo.transformOffset = 0;             // Offset para una matriz de transformación, si se usa
+
+		// Grabar comando para construir la TLAS
+		VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &tlasRangeInfo;
+		pfnVkCmdBuildAccelerationStructuresKHR(
+			command_buffers[i],
+			1, // Número de estructuras para construir
+			&tlasBuildInfo, // Información de la estructura de aceleración
+			&pTlasBuildRangeInfo // Información del rango de construcción
+		);
+
+		// Comandos para configurar y realizar el trazado de rayos
+	   // Bind del pipeline de ray tracing
+		vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_);
+
+		for (int j = 0; j < window_->descriptorSets_.size(); j++) {
+			// Bind de sets de descriptores (asegúrate de haberlos configurado previamente)
+			vkCmdBindDescriptorSets(command_buffers[i],
+				VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+				pipelineLayout,
+				0,
+				1,
+				&window_->descriptorSets_.at(j),
+				0,
+				nullptr);
+		}
+
+
+		// Trazado de rayos
+		VkBufferDeviceAddressInfo bufferDeviceAI{};
+		bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+		bufferDeviceAI.buffer = SBT_buffer_;  // SBT_buffer es tu VkBuffer
+		VkDeviceAddress SBR_address = vkGetBufferDeviceAddress(window_->vk_device_, &bufferDeviceAI);
+		VkStridedDeviceAddressRegionKHR raygenRegion = { };
+		raygenRegion.deviceAddress = SBR_address + 0 * stride_size_;
+		raygenRegion.stride = stride_size_;
+		raygenRegion.size = stride_size_;
+		VkStridedDeviceAddressRegionKHR missRegion = {  };
+		missRegion.deviceAddress = SBR_address + 1 * stride_size_;
+		missRegion.size = stride_size_;
+		missRegion.stride = stride_size_;
+		VkStridedDeviceAddressRegionKHR hitRegion = {  };
+		hitRegion.deviceAddress = SBR_address + 2 * stride_size_;
+		hitRegion.size = stride_size_;
+		hitRegion.stride = stride_size_;
+		VkStridedDeviceAddressRegionKHR callableRegion = {/* ... */ };
+		pfnVkCmdTraceRaysKHR(
+			command_buffers[i],
+			&raygenRegion,
+			&missRegion,
+			&hitRegion,
+			&callableRegion,
+			window_->swapchain_info.imageExtent.width,  // Ancho del framebuffer
+			window_->swapchain_info.imageExtent.height, // Altura del framebuffer
+			1       // Profundidad
+		);
+
+		if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
+			throw std::runtime_error("failed to record command buffer!");
+		}
+	}
+}

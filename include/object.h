@@ -34,6 +34,11 @@ public:
 	VkBuffer model_buffer_;
 	VkDeviceMemory model_buffer_memory_;
 
+	// Pointers to acceleration functions
+	PFN_vkCreateAccelerationStructureKHR pfnVkCreateAccelerationStructureKHR = nullptr;
+	PFN_vkDestroyAccelerationStructureKHR pfnVkDestroyAccelerationStructureKHR;
+	PFN_vkGetAccelerationStructureDeviceAddressKHR pfnVkGetAccelerationStructureDeviceAddressKHR;
+	PFN_vkGetAccelerationStructureBuildSizesKHR pfnVkGetAccelerationStructureBuildSizesKHR;
 	// BLAS
 	VkBuffer blas_buffer_;
 	VkDeviceMemory blas_buffer_memory_;

@@ -87,6 +87,14 @@ object::object(window* w)
 {
 	window_ = w;
 	blas_id_ = window_->give_blas_id();
+	
+	pfnVkCreateAccelerationStructureKHR = reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(vkGetDeviceProcAddr(window_->vk_device_, "vkCreateAccelerationStructureKHR"));
+	if (!pfnVkCreateAccelerationStructureKHR) {
+		throw std::runtime_error("Failed to load vkCreateAccelerationStructureKHR");
+	}
+	pfnVkDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkDestroyAccelerationStructureKHR");
+	pfnVkGetAccelerationStructureDeviceAddressKHR = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetAccelerationStructureDeviceAddressKHR");
+	pfnVkGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetAccelerationStructureBuildSizesKHR");
 
 	transform_ = glm::mat4(1.0);
 
@@ -171,7 +179,7 @@ object::object(window* w)
 object::~object()
 {
 	if (acceleration_structure_ != VK_NULL_HANDLE) {
-		vkDestroyAccelerationStructureKHR(window_->vk_device_, acceleration_structure_, nullptr);
+		pfnVkDestroyAccelerationStructureKHR(window_->vk_device_, acceleration_structure_, nullptr);
 		acceleration_structure_ = VK_NULL_HANDLE;
 	}
 
@@ -230,7 +238,7 @@ void object::create_BLAS()
 
 	uint32_t maxPrimitiveCounts = vertex_.vertices.size() / 3;
 
-	vkGetAccelerationStructureBuildSizesKHR(
+	pfnVkGetAccelerationStructureBuildSizesKHR(
 		window_->vk_device_,
 		VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
 		&buildInfo, 
@@ -303,7 +311,7 @@ void object::create_BLAS()
 	accelerationStructureCreateInfo.size = sizeInfo.accelerationStructureSize;
 	accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
-	if (vkCreateAccelerationStructureKHR(window_->vk_device_, &accelerationStructureCreateInfo, nullptr, &acceleration_structure_) != VK_SUCCESS) {
+	if (pfnVkCreateAccelerationStructureKHR(window_->vk_device_, &accelerationStructureCreateInfo, nullptr, &acceleration_structure_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create acceleration structure!");
 	}
 	/*
@@ -317,11 +325,11 @@ void object::create_BLAS()
 void object::create_buffers()
 {
 	//Vertex buffer
-	VkDeviceSize bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
+	VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
 
 	VkBufferCreateInfo vertex_buffer_info = {};
 	vertex_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertex_buffer_info.size = bufferSize; 
+	vertex_buffer_info.size = vertex_bufferSize;
 	vertex_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
 	vertex_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -332,18 +340,18 @@ void object::create_buffers()
 	VkMemoryRequirements vertex_memory_requirements;
 	vkGetBufferMemoryRequirements(window_->vk_device_, vertex_buffer_, &vertex_memory_requirements);
 
-	VkMemoryAllocateInfo allocInfo = {};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = vertex_memory_requirements.size;
-	allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, vertex_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	VkMemoryAllocateInfo vertex_allocInfo = {};
+	vertex_allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	vertex_allocInfo.allocationSize = vertex_memory_requirements.size;
+	vertex_allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, vertex_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &vertex_buffer_memory_) != VK_SUCCESS) {
+	if (vkAllocateMemory(window_->vk_device_, &vertex_allocInfo, nullptr, &vertex_buffer_memory_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate vertex buffer memory!");
 	}
 
 	void* data;
-	vkMapMemory(window_->vk_device_, vertex_buffer_memory_, 0, bufferSize, 0, &data);
-	memcpy(data, vertex_.vertices.data(), (size_t)bufferSize);
+	vkMapMemory(window_->vk_device_, vertex_buffer_memory_, 0, vertex_bufferSize, 0, &data);
+	memcpy(data, vertex_.vertices.data(), (size_t)vertex_bufferSize);
 	vkUnmapMemory(window_->vk_device_, vertex_buffer_memory_);
 
 	if (vkBindBufferMemory(window_->vk_device_, vertex_buffer_, vertex_buffer_memory_, 0) != VK_SUCCESS) {
@@ -383,12 +391,12 @@ void object::create_buffers()
 	}
 
 	// Model buffer
-	VkDeviceSize bufferSize = sizeof(glm::mat4);
+	VkDeviceSize model_bufferSize = sizeof(glm::mat4);
 
 	// Crear el buffer uniforme para la matriz modelo
 	VkBufferCreateInfo bufferInfo = {};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = bufferSize;
+	bufferInfo.size = model_bufferSize;
 	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -399,12 +407,12 @@ void object::create_buffers()
 	VkMemoryRequirements memRequirements;
 	vkGetBufferMemoryRequirements(window_->vk_device_, model_buffer_, &memRequirements);
 
-	VkMemoryAllocateInfo allocInfo = {};
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memRequirements.size;
-	allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	VkMemoryAllocateInfo model_allocInfo = {};
+	model_allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	model_allocInfo.allocationSize = memRequirements.size;
+	model_allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &model_buffer_memory_) != VK_SUCCESS) {
+	if (vkAllocateMemory(window_->vk_device_, &model_allocInfo, nullptr, &model_buffer_memory_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate model matrix buffer memory!");
 	}
 
@@ -450,6 +458,6 @@ VkDeviceAddress object::getBLASDeviceAddress(VkDevice d)
 	addressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
 	addressInfo.accelerationStructure = acceleration_structure_; // Asegúrate de que 'acceleration_structure_' sea la BLAS de este objeto
 
-	return vkGetAccelerationStructureDeviceAddressKHR(d, &addressInfo);
+	return pfnVkGetAccelerationStructureDeviceAddressKHR(d, &addressInfo);
 }
 

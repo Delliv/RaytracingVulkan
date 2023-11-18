@@ -1,3 +1,6 @@
+#ifndef window_class
+#define window_class 
+
 #include "vulkan.h"
 #include "glfw3.h"
 #include "vulkan_video_codec_h264std.h"
@@ -9,10 +12,8 @@
 #include <string>
 #include <optional>
 #include "vulkan_loader.h"
-#include "object.h"
 
-#ifndef window_class
-#define window_class 
+class object;
 
 class window {
 public:
@@ -77,9 +78,9 @@ public:
 	void define_descriptors();
 	void create_buffers();
 	void create_framebuffers();
-	void create_command_pool();
-	void create_command_buffers();
-	void record_command_buffers();
+	PFN_vkCreateAccelerationStructureKHR pfnVkCreateAccelerationStructureKHR;
+	PFN_vkCmdBuildAccelerationStructuresKHR pfnVkCmdBuildAccelerationStructuresKHR;
+	PFN_vkGetAccelerationStructureBuildSizesKHR pfnVkGetAccelerationStructureBuildSizesKHR;
 	void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 	// Change these names
@@ -145,13 +146,14 @@ private:
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSetLayout> layouts;
 	std::vector<VkDescriptorSet> descriptors_set;
-	std::vector<VkDescriptorSet> descriptorSets;
+	std::vector<VkDescriptorSet> descriptorSets_;
 
 	// Change these names
+	std::vector<VkDescriptorSetLayout> desciptors_set_layouts_;
 	VkDescriptorSetLayout descriptorSetLayoutModelMatrix; // Para la matriz modelo
 	VkDescriptorSetLayout descriptorSetLayoutVertex;      // Para los vértices
 	VkDescriptorSetLayout descriptorSetLayoutBLAS;      // Para los vértices
-
+	
 	std::vector<VkDescriptorSet> descriptorSetsModelMatrix;
 	std::vector<VkDescriptorSet> descriptorSetsVertex;
 	std::vector<VkDescriptorSet> descriptorSetsBLAS;
@@ -195,6 +197,7 @@ private:
 	std::vector<VkAccelerationStructureInstanceKHR> vk_acceleration_structure_instances_;
 	VkBuffer TLAS_buffer_;
 	VkDeviceMemory TLAS_memory_buffer_;
+	VkAccelerationStructureBuildGeometryInfoKHR VkAccelerationStructureBuildGeometryInfoKHR_info_;
 };
 
 
