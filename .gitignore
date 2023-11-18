@@ -34,3 +34,5 @@
 
 *.vs
 /build/
+/deps/glfw/lib-vc2022/
+/deps/Vulkan/Lib/
