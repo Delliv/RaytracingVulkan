@@ -95,7 +95,8 @@ object::object(window* w)
 	pfnVkDestroyAccelerationStructureKHR = (PFN_vkDestroyAccelerationStructureKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkDestroyAccelerationStructureKHR");
 	pfnVkGetAccelerationStructureDeviceAddressKHR = (PFN_vkGetAccelerationStructureDeviceAddressKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetAccelerationStructureDeviceAddressKHR");
 	pfnVkGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetAccelerationStructureBuildSizesKHR");
-
+	PpfnVkGetBufferDeviceAddressKHR = (PFN_vkGetBufferDeviceAddressKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetBufferDeviceAddressKHR");
+	
 	transform_ = glm::mat4(1.0);
 
 	vertex_.vertices = {
@@ -291,6 +292,10 @@ void object::create_BLAS()
 	scratchAllocInfo.allocationSize = scratchMemoryRequirements.size;
 	scratchAllocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, scratchMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
+	VkMemoryAllocateFlagsInfo allocateFlagsInfo = {};
+	allocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	allocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+	scratchAllocInfo.pNext = &allocateFlagsInfo;
 	if (vkAllocateMemory(window_->vk_device_, &scratchAllocInfo, nullptr, &scratch_buffer_memory_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to allocate scratch buffer memory!");
 	}
@@ -324,14 +329,21 @@ void object::create_BLAS()
 
 void object::create_buffers()
 {
-	//Vertex buffer
+	// Vertex buffer
 	VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
+	VkBufferOpaqueCaptureAddressCreateInfo bufferOpaqueCaptureAddressCreateInfo = {};
+	bufferOpaqueCaptureAddressCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO;
+	bufferOpaqueCaptureAddressCreateInfo.pNext = nullptr; // Siempre debe ser nullptr a menos que esté extendiendo la estructura con más información.
+	// Supongamos que no tienes una dirección capturada preexistente y quieres que Vulkan genere una.
+	// En ese caso, establecerías opaqueCaptureAddress a 0.
+	bufferOpaqueCaptureAddressCreateInfo.opaqueCaptureAddress = 0;
 
 	VkBufferCreateInfo vertex_buffer_info = {};
 	vertex_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	vertex_buffer_info.size = vertex_bufferSize;
-	vertex_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	vertex_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR; // Combinación de flags.
 	vertex_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	vertex_buffer_info.pNext = &bufferOpaqueCaptureAddressCreateInfo;
 
 	if (vkCreateBuffer(window_->vk_device_, &vertex_buffer_info, nullptr, &vertex_buffer_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create vertex buffer!");
@@ -341,8 +353,9 @@ void object::create_buffers()
 	vkGetBufferMemoryRequirements(window_->vk_device_, vertex_buffer_, &vertex_memory_requirements);
 
 	VkMemoryAllocateInfo vertex_allocInfo = {};
+	vertex_allocInfo.allocationSize =vertex_memory_requirements.size;
+
 	vertex_allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	vertex_allocInfo.allocationSize = vertex_memory_requirements.size;
 	vertex_allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, vertex_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	if (vkAllocateMemory(window_->vk_device_, &vertex_allocInfo, nullptr, &vertex_buffer_memory_) != VK_SUCCESS) {
@@ -362,8 +375,10 @@ void object::create_buffers()
 	VkBufferCreateInfo index_buffer_info = {};
 	index_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	index_buffer_info.size = sizeof(indices_[0]) * indices_.size();
-	index_buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	index_buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT; // Corregido aquí
 	index_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	index_buffer_info.flags = 0; // No hay flags especiales necesarios aquí
+	index_buffer_info.pNext = &bufferOpaqueCaptureAddressCreateInfo;
 
 	if (vkCreateBuffer(window_->vk_device_, &index_buffer_info, nullptr, &index_buffer_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create index buffer!");
@@ -435,6 +450,15 @@ uint32_t object::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFi
 	VkPhysicalDeviceMemoryProperties memProperties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
 
+	// Primero, intentar encontrar un tipo de memoria que sea DEVICE_LOCAL y cumpla con los requisitos básicos.
+	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+		if ((typeFilter & (1 << i)) &&
+			(memProperties.memoryTypes[i].propertyFlags & (properties | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) == (properties | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+			return i;
+		}
+	}
+
+	// Si no se encuentra, buscar un tipo de memoria que simplemente cumpla con los requisitos básicos.
 	for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
 		if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
 			return i;
@@ -449,7 +473,7 @@ VkDeviceAddress object::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
 	VkBufferDeviceAddressInfo bufferDeviceAI{};
 	bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	bufferDeviceAI.buffer = buffer;
-	return vkGetBufferDeviceAddress(device, &bufferDeviceAI);
+	return PpfnVkGetBufferDeviceAddressKHR(device, &bufferDeviceAI);
 }
 
 VkDeviceAddress object::getBLASDeviceAddress(VkDevice d)

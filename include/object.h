@@ -39,6 +39,7 @@ public:
 	PFN_vkDestroyAccelerationStructureKHR pfnVkDestroyAccelerationStructureKHR;
 	PFN_vkGetAccelerationStructureDeviceAddressKHR pfnVkGetAccelerationStructureDeviceAddressKHR;
 	PFN_vkGetAccelerationStructureBuildSizesKHR pfnVkGetAccelerationStructureBuildSizesKHR;
+	PFN_vkGetBufferDeviceAddressKHR PpfnVkGetBufferDeviceAddressKHR;
 	// BLAS
 	VkBuffer blas_buffer_;
 	VkDeviceMemory blas_buffer_memory_;

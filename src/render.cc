@@ -34,19 +34,27 @@ render::render(window* w)
 
 	// Ahora puedes acceder a las propiedades específicas de ray tracing
 	stride_size_ = rtProperties.shaderGroupBaseAlignment;
+
+
+
 }
 
 render::~render()
 {
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		vkDestroySemaphore(window_->vk_device_, renderFinishedSemaphores[i], nullptr);
+		vkDestroySemaphore(window_->vk_device_, imageAvailableSemaphores[i], nullptr);
+		vkDestroyFence(window_->vk_device_, in_flight_fences_[i], nullptr);
+	}
 }
 
 
 void render::create_pipeline()
 {
 	// When i have the shaders compiled and saved where they have to
-	auto raygen_shader_code = readFile("raygen.spv");
-	auto miss_shader_code = readFile("miss.spv");
-	auto closest_hit_shader_code = readFile("closesthit.spv");
+	auto raygen_shader_code = readFile("../raygen.spv");
+	auto miss_shader_code = readFile("../miss.spv");
+	auto closest_hit_shader_code = readFile("../closesthit.spv");
 
 	raygen = createShaderModule(window_->vk_device_, raygen_shader_code);
 	miss = createShaderModule(window_->vk_device_, miss_shader_code);
@@ -197,10 +205,7 @@ void render::create_pipeline()
 	vkDestroyShaderModule(window_->vk_device_, miss, nullptr);
 }
 
-void render::create_raytracing_buffers()
-{
 
-}
 
 uint32_t render::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
@@ -309,22 +314,6 @@ void render::create_command_pool()
 
 }
 
-void render::create_command_buffers()
-{
-	command_buffers.resize(window_->swap_chain_images.size());
-
-	VkCommandBufferAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = command_pool_;
-	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = 1;
-
-	for (size_t i = 0; i < window_->swap_chain_images.size(); i++) {
-		if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, &command_buffers.at(i)) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate command buffers!");
-		}
-	}
-}
 
 void render::record_command_buffers()
 {
@@ -347,6 +336,7 @@ void render::record_command_buffers()
 		if (vkBeginCommandBuffer(command_buffers[i], &beginInfo) != VK_SUCCESS) {
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
+
 
 		// Aquí asumimos que ya tienes preparada la información de construcción de la TLAS
 		VkAccelerationStructureBuildGeometryInfoKHR tlasBuildInfo = window_->VkAccelerationStructureBuildGeometryInfoKHR_info_;
@@ -383,6 +373,19 @@ void render::record_command_buffers()
 				nullptr);
 		}
 
+		// Inicio del render pass
+		VkRenderPassBeginInfo renderPassInfo{};
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		renderPassInfo.renderPass = window_->render_pass_; // Asegúrate de tener esta referencia en window
+		renderPassInfo.framebuffer = window_->framebuffers_[i]; // Usa el framebuffer adecuado
+		renderPassInfo.renderArea.offset = { 0, 0 };
+		renderPassInfo.renderArea.extent = window_->swapchain_info.imageExtent; // Usa el extent de tu swap chain
+
+		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} }; // Color de fondo
+		renderPassInfo.clearValueCount = 1;
+		renderPassInfo.pClearValues = &clearColor;
+
+		vkCmdBeginRenderPass(command_buffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// Trazado de rayos
 		VkBufferDeviceAddressInfo bufferDeviceAI{};
@@ -413,8 +416,108 @@ void render::record_command_buffers()
 			1       // Profundidad
 		);
 
+		vkCmdEndRenderPass(command_buffers[i]);
+
 		if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to record command buffer!");
+		}
+	}
+}
+
+void render::render_scene()
+{
+	vkWaitForFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
+
+	uint32_t imageIndex;
+	VkResult result = vkAcquireNextImageKHR(window_->vk_device_, window_->swapChain, UINT64_MAX, imageAvailableSemaphores[current_frame_], VK_NULL_HANDLE, &imageIndex);
+
+	if (in_flight_images_[imageIndex] != VK_NULL_HANDLE) {
+		vkWaitForFences(window_->vk_device_, 1, &in_flight_images_[imageIndex], VK_TRUE, UINT64_MAX);
+	}
+
+	in_flight_images_[imageIndex] = in_flight_fences_[current_frame_];
+
+	window_->updateDescriptorSets();
+
+	record_command_buffers();
+
+	// Enviar el command buffer a la cola para su ejecución
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[current_frame_] };
+	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = waitSemaphores;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &command_buffers[imageIndex];
+
+	VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[current_frame_] };
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = signalSemaphores;
+
+	vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
+
+	if (vkQueueSubmit(window_->graphicsQueue, 1, &submitInfo, in_flight_fences_[current_frame_]) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to submit draw command buffer!");
+	}
+
+	// Presentar el frame
+	VkPresentInfoKHR presentInfo{};
+	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores = signalSemaphores;
+
+	VkSwapchainKHR swapChains[] = { window_->swapChain };
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = swapChains;
+	presentInfo.pImageIndices = &imageIndex;
+
+	result = vkQueuePresentKHR(window_->graphicsQueue, &presentInfo);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR /* || resizeWindow */) {
+		// recreateSwapChain();
+	}
+	else if (result != VK_SUCCESS) {
+		throw std::runtime_error("Failed to present swap chain image!");
+	}
+
+	// Prepararse para el siguiente frame
+	current_frame_ = (current_frame_ + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void render::init_fences()
+{
+	in_flight_fences_.resize(MAX_FRAMES_IN_FLIGHT);
+	in_flight_images_.resize(window_->swap_chain_images.size(), VK_NULL_HANDLE);
+
+	VkFenceCreateInfo fenceInfo = {};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		if (vkCreateFence(window_->vk_device_, &fenceInfo, nullptr, &in_flight_fences_[i]) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create synchronization objects for a frame!");
+		}
+	}
+
+
+}
+
+void render::init_semaphore()
+{
+
+	imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+	renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+
+	VkSemaphoreCreateInfo semaphoreInfo = {};
+	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		if (vkCreateSemaphore(window_->vk_device_, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+			vkCreateSemaphore(window_->vk_device_, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS) {
+
+			throw std::runtime_error("failed to create synchronization objects for a frame!");
 		}
 	}
 }

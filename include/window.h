@@ -75,8 +75,7 @@ public:
 	VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pMessenger);
 	void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT messenger, const VkAllocationCallbacks* pAllocator);
 	void render_pass();
-	void define_descriptors();
-	void create_buffers();
+	//void create_buffers();
 	void create_framebuffers();
 	PFN_vkCreateAccelerationStructureKHR pfnVkCreateAccelerationStructureKHR;
 	PFN_vkCmdBuildAccelerationStructuresKHR pfnVkCmdBuildAccelerationStructuresKHR;
@@ -167,11 +166,11 @@ private:
 
 
 	// Buffers
-	std::vector<VkBuffer> buffers_;
+	/*std::vector<VkBuffer> buffers_;
 	VkBufferCreateInfo buffer_Info;
 	std::vector<VkDeviceMemory> uniforms_buffers_memory_;
-	UniformBufferObject ubo_;
-
+	UniformBufferObject vertex_;
+	*/
 	// Framebuffers
 	std::vector<VkFramebuffer> framebuffers_;
 

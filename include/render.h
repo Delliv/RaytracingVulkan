@@ -22,12 +22,19 @@ public:
 	~render();
 	
 	void create_pipeline();
-	void create_raytracing_buffers();
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code);
 	void create_SBT_buffer();
 	std::vector<char> readFile(const std::string& filename);
+	// Command buffer
+	void create_command_pool();
+	void record_command_buffers();
 
+	void render_scene();
+	void init_fences();
+	void init_semaphore();
+
+	uint8_t current_frame_;
 private:
 	// Command pool and command buffers
 	VkCommandPool command_pool_;
@@ -55,10 +62,15 @@ private:
 	PFN_vkGetRayTracingShaderGroupHandlesKHR pfnVkGetRayTracingShaderGroupHandlesKHR;
 	PFN_vkCmdTraceRaysKHR pfnVkCmdTraceRaysKHR;
 	PFN_vkCmdBuildAccelerationStructuresKHR pfnVkCmdBuildAccelerationStructuresKHR;
-	// Command buffer
-	void create_command_pool();
-	void create_command_buffers();
-	void record_command_buffers();
+
+
+	// Render the scene
+	std::vector<VkFence> in_flight_fences_;
+	std::vector<VkFence> in_flight_images_;
+
+	std::vector<VkSemaphore> imageAvailableSemaphores;
+	std::vector<VkSemaphore> renderFinishedSemaphores;
+	const int MAX_FRAMES_IN_FLIGHT = 2; // o cualquier número que necesites
 };
 
 

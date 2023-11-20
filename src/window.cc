@@ -22,6 +22,10 @@ window::window()
 	pfnVkCreateAccelerationStructureKHR = (PFN_vkCreateAccelerationStructureKHR)vkGetDeviceProcAddr(vk_device_, "vkCreateAccelerationStructureKHR");
 	pfnVkCmdBuildAccelerationStructuresKHR = (PFN_vkCmdBuildAccelerationStructuresKHR)vkGetDeviceProcAddr(vk_device_, "vkCmdBuildAccelerationStructuresKHR");
 	pfnVkGetAccelerationStructureBuildSizesKHR = (PFN_vkGetAccelerationStructureBuildSizesKHR)vkGetDeviceProcAddr(vk_device_, "vkGetAccelerationStructureBuildSizesKHR");
+
+	//createDescriptorSetLayout();
+	//createDescriptorPool();
+	//createDescriptorSets();
 }
 
 window::~window()
@@ -117,6 +121,7 @@ void window::initialize_vulkan()
 
 	render_pass();
 
+	create_framebuffers();
 	
 }
 
@@ -183,8 +188,7 @@ void window::physical_devices()
 
 
 }
-void window::logical_devices()
-{
+void window::logical_devices() {
 	if (glfwCreateWindowSurface(vk_instance_, window_, nullptr, &surface_) != VK_SUCCESS) {
 		throw std::runtime_error("Error while creating surface screen");
 	}
@@ -214,35 +218,44 @@ void window::logical_devices()
 
 	VkPhysicalDeviceAccelerationStructureFeaturesKHR accelFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
 	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
-	accelFeature.pNext = &rtPipelineFeature;
+
+	VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
+	bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
+	bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
+	bufferDeviceAddressFeatures.pNext = &rtPipelineFeature;
+
+	accelFeature.pNext = &bufferDeviceAddressFeatures;
 
 	VkPhysicalDeviceFeatures2 deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	deviceFeatures2.pNext = &accelFeature;
 
-	// Comprobación de soporte para ray tracing
 	vkGetPhysicalDeviceFeatures2(vk_physical_device_, &deviceFeatures2);
 	if (!accelFeature.accelerationStructure || !rtPipelineFeature.rayTracingPipeline) {
 		throw std::runtime_error("Ray tracing features are not supported on this device.");
 	}
 
-	VkPhysicalDeviceFeatures deviceFeatures{};
-	VkDeviceCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pQueueCreateInfos = queueCreateInfos.data();
-	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-
 	const std::vector<const char*> deviceExtensions = {
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
 		VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME
+		VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
+		VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+		VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+		VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+		VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
+		// ... otras extensiones que puedas necesitar
 	};
 
+	VkDeviceCreateInfo createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	createInfo.pQueueCreateInfos = queueCreateInfos.data();
+	createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-	createInfo.pEnabledFeatures = &deviceFeatures;
-	createInfo.pNext = &deviceFeatures2; // Añadir las características de ray tracing
+	createInfo.pEnabledFeatures = NULL;  // Establecer en NULL
+	createInfo.pNext = &deviceFeatures2; // Encadenar las características de ray tracing
 
+	// Creación del dispositivo Vulkan
 	if (vkCreateDevice(vk_physical_device_, &createInfo, nullptr, &vk_device_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create logical device!");
 	}
@@ -256,8 +269,6 @@ void window::logical_devices()
 
 	// Creación del cargador de Vulkan para raytracing
 	//vk_loader_.init();
-	
-
 }
 
 
@@ -361,13 +372,12 @@ void window::create_presentation_queue_and_swapchain()
 	swapchain_info.presentMode = VK_PRESENT_MODE_FIFO_KHR; // Ajusta según tus necesidades
 	swapchain_info.clipped = VK_TRUE;
 	swapchain_info.oldSwapchain = VK_NULL_HANDLE; // Solo relevante al recrear la cadena
-
-	VkResult a = vkCreateSwapchainKHR(vk_device_, &swapchain_info, nullptr, &swapChain);
-	/*
+	
 	if (vkCreateSwapchainKHR(vk_device_, &swapchain_info, nullptr, &swapChain) != VK_SUCCESS) {
 		throw std::runtime_error("Error while creating the swap chain.");
-	}*/
+	}
 
+	obtain_swap_images();
 }
 
 void window::obtain_swap_images()
@@ -491,75 +501,14 @@ void window::render_pass()
 	}
 }
 
-void window::define_descriptors()
-{
-	/*
-	// Binding para la estructura de aceleración (Acceleration Structure)
-	VkDescriptorSetLayoutBinding asLayoutBinding{};
-	asLayoutBinding.binding = 0;
-	asLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	asLayoutBinding.descriptorCount = 1;
-	asLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-
-	// Binding para un Storage Buffer
-	VkDescriptorSetLayoutBinding storageBufferBinding{};
-	storageBufferBinding.binding = 1;
-	storageBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	storageBufferBinding.descriptorCount = 1;
-	storageBufferBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-
-	// Combinamos los bindings
-	std::array<VkDescriptorSetLayoutBinding, 2> bindings = { asLayoutBinding, storageBufferBinding };
-
-	// Información para el layout del set de descriptores
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-	layoutInfo.pBindings = bindings.data();
-
-	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfo, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor set layout!");
-	}
-
-	// Configuración del pool de descriptores
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	poolSizes[0].descriptorCount = 1;
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	poolSizes[1].descriptorCount = 1;
-
-	VkDescriptorPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = 1;
-
-	if (vkCreateDescriptorPool(vk_device_, &poolInfo, nullptr, &descriptor_pool) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor pool!");
-	}
-
-	// Alocación de sets de descriptores
-	layouts.push_back(descriptor_set_layout);
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = descriptor_pool;
-	allocInfo.descriptorSetCount = static_cast<uint32_t>(layouts.size());
-	allocInfo.pSetLayouts = layouts.data();
-
-	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, &descriptor_set) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate descriptor sets!");
-	}
-	*/
-	// Una vez comience a generar las estructuras para la escena debo actualizar los descriptores aqui
-}
-
+/*
 void window::create_buffers()
 {
 	buffers_.resize(swap_chain_images.size());
 	uniforms_buffers_memory_.resize(swap_chain_images.size());
 
 	buffer_Info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	buffer_Info.size = sizeof(UniformBufferObject);
+	buffer_Info.size = sizeof(Vertex);
 	buffer_Info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	buffer_Info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -568,10 +517,10 @@ void window::create_buffers()
 		if (vkCreateBuffer(vk_device_, &buffer_Info, nullptr, &buffers_.at(i)) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create Uniform Buffer!");
 		}
-		allocate_memory_for_buffers(&buffers_.at(i), &uniforms_buffers_memory_.at(i), &ubo_, sizeof(ubo_)); // Before test anything fill ubo_ with some data, like camera matrix
+		allocate_memory_for_buffers(&buffers_.at(i), &uniforms_buffers_memory_.at(i), &vertex_, sizeof(vertex_)); // Before test anything fill ubo_ with some data, like camera matrix
 	}
 
-}
+}*/
 
 void window::create_framebuffers()
 {
@@ -677,17 +626,19 @@ void window::createDescriptorSetLayout()
 void window::createDescriptorPool()
 {
 	// Define el tamaño del pool basado en la cantidad de descriptores
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[0].descriptorCount = static_cast<uint32_t>(modelMatrixBuffers.size());
+	poolSizes[0].descriptorCount = 10;//static_cast<uint32_t>(modelMatrixBuffers.size());
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	poolSizes[1].descriptorCount = static_cast<uint32_t>(vertexBuffers.size());
+	poolSizes[1].descriptorCount = 10;//static_cast<uint32_t>(vertexBuffers.size());
+	poolSizes[2].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+	poolSizes[2].descriptorCount = 1;
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(modelMatrixBuffers.size() + vertexBuffers.size());
+	poolInfo.maxSets = static_cast<uint32_t>(modelMatrixBuffers.size() + vertexBuffers.size() + 1);
 
 	if (vkCreateDescriptorPool(vk_device_, &poolInfo, nullptr, &descriptor_pool) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create descriptor pool!");
@@ -1032,5 +983,3 @@ uint32_t window::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags prope
 
 	throw std::runtime_error("failed to find suitable memory type!");
 }
-
-
