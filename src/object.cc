@@ -217,7 +217,7 @@ void object::create_BLAS()
 	geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 	geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
 	geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT; 
-	geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_,vertex_buffer_);
+	geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_,vertices_buffer_);
 	geometry.geometry.triangles.vertexStride = sizeof(Vertex); 
 	geometry.geometry.triangles.maxVertex = vertex_.vertices.size(); 
 	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32; 
@@ -329,112 +329,69 @@ void object::create_BLAS()
 
 void object::create_buffers()
 {
-	// Vertex buffer
 	VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
-	VkBufferOpaqueCaptureAddressCreateInfo bufferOpaqueCaptureAddressCreateInfo = {};
-	bufferOpaqueCaptureAddressCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_OPAQUE_CAPTURE_ADDRESS_CREATE_INFO;
-	bufferOpaqueCaptureAddressCreateInfo.pNext = nullptr; // Siempre debe ser nullptr a menos que esté extendiendo la estructura con más información.
-	// Supongamos que no tienes una dirección capturada preexistente y quieres que Vulkan genere una.
-	// En ese caso, establecerías opaqueCaptureAddress a 0.
-	bufferOpaqueCaptureAddressCreateInfo.opaqueCaptureAddress = 0;
+	createBuffer(vertex_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertices_buffer_, vertices_buffer_memory_);
+	uploadDataToBuffer(vertex_.vertices.data(), vertices_buffer_memory_, vertex_bufferSize);
 
-	VkBufferCreateInfo vertex_buffer_info = {};
-	vertex_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertex_buffer_info.size = vertex_bufferSize;
-	vertex_buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR; // Combinación de flags.
-	vertex_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	vertex_buffer_info.pNext = &bufferOpaqueCaptureAddressCreateInfo;
+	// Crear y configurar el buffer de índices
+	VkDeviceSize index_bufferSize = sizeof(indices_[0]) * indices_.size();
+	createBuffer(index_bufferSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, index_buffer_, index_buffer_memory_);
+	uploadDataToBuffer(indices_.data(), index_buffer_memory_, index_bufferSize);
 
-	if (vkCreateBuffer(window_->vk_device_, &vertex_buffer_info, nullptr, &vertex_buffer_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create vertex buffer!");
-	}
+	// Crear y configurar el buffer de normales
+	VkDeviceSize normal_bufferSize = sizeof(vertex_.normals[0]) * vertex_.normals.size();
+	createBuffer(normal_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, normal_buffer_, normal_buffer_memory_);
+	uploadDataToBuffer(vertex_.normals.data(), normal_buffer_memory_, normal_bufferSize);
 
-	VkMemoryRequirements vertex_memory_requirements;
-	vkGetBufferMemoryRequirements(window_->vk_device_, vertex_buffer_, &vertex_memory_requirements);
+	// Crear y configurar el buffer de colores (si es necesario)
+	VkDeviceSize color_bufferSize = sizeof(vertex_.color);
+	createBuffer(color_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, color_buffer_, color_buffer_memory_);
+	uploadDataToBuffer(&vertex_.color, color_buffer_memory_, color_bufferSize);
 
-	VkMemoryAllocateInfo vertex_allocInfo = {};
-	vertex_allocInfo.allocationSize =vertex_memory_requirements.size;
-
-	vertex_allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	vertex_allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, vertex_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-	if (vkAllocateMemory(window_->vk_device_, &vertex_allocInfo, nullptr, &vertex_buffer_memory_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to allocate vertex buffer memory!");
-	}
-
-	void* data;
-	vkMapMemory(window_->vk_device_, vertex_buffer_memory_, 0, vertex_bufferSize, 0, &data);
-	memcpy(data, vertex_.vertices.data(), (size_t)vertex_bufferSize);
-	vkUnmapMemory(window_->vk_device_, vertex_buffer_memory_);
-
-	if (vkBindBufferMemory(window_->vk_device_, vertex_buffer_, vertex_buffer_memory_, 0) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to bind vertex buffer memory!");
-	}
-
-	// Index buffer
-	VkBufferCreateInfo index_buffer_info = {};
-	index_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	index_buffer_info.size = sizeof(indices_[0]) * indices_.size();
-	index_buffer_info.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT; // Corregido aquí
-	index_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	index_buffer_info.flags = 0; // No hay flags especiales necesarios aquí
-	index_buffer_info.pNext = &bufferOpaqueCaptureAddressCreateInfo;
-
-	if (vkCreateBuffer(window_->vk_device_, &index_buffer_info, nullptr, &index_buffer_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create index buffer!");
-	}
-
-	VkMemoryRequirements index_memory_requirements;
-	vkGetBufferMemoryRequirements(window_->vk_device_, index_buffer_, &index_memory_requirements);
-
-	VkMemoryAllocateInfo index_alloc_info = {};
-	index_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	index_alloc_info.allocationSize = index_memory_requirements.size;
-	index_alloc_info.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, index_memory_requirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-	if (vkAllocateMemory(window_->vk_device_, &index_alloc_info, nullptr, &index_buffer_memory_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to allocate index buffer memory!");
-	}
-
-	void* index_data;
-	vkMapMemory(window_->vk_device_, index_buffer_memory_, 0, index_buffer_info.size, 0, &index_data);
-	memcpy(index_data, indices_.data(), (size_t)index_buffer_info.size);
-	vkUnmapMemory(window_->vk_device_, index_buffer_memory_);
-
-	if (vkBindBufferMemory(window_->vk_device_, index_buffer_, index_buffer_memory_, 0) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to bind index buffer memory!");
-	}
-
-	// Model buffer
+	// Crear y configurar el buffer para la matriz del modelo
 	VkDeviceSize model_bufferSize = sizeof(glm::mat4);
+	createBuffer(model_bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, model_buffer_, model_buffer_memory_);
+	uploadDataToBuffer(&transform_, model_buffer_memory_, model_bufferSize);
+}
 
-	// Crear el buffer uniforme para la matriz modelo
-	VkBufferCreateInfo bufferInfo = {};
+void object::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+{
+	VkBufferCreateInfo bufferInfo{};
 	bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferInfo.size = model_bufferSize;
-	bufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferInfo.size = size;
+	bufferInfo.usage = usage;
 	bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	if (vkCreateBuffer(window_->vk_device_, &bufferInfo, nullptr, &model_buffer_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create model matrix buffer!");
+	if (vkCreateBuffer(window_->vk_device_, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create buffer!");
 	}
 
 	VkMemoryRequirements memRequirements;
-	vkGetBufferMemoryRequirements(window_->vk_device_, model_buffer_, &memRequirements);
+	vkGetBufferMemoryRequirements(window_->vk_device_, buffer, &memRequirements);
 
-	VkMemoryAllocateInfo model_allocInfo = {};
-	model_allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	model_allocInfo.allocationSize = memRequirements.size;
-	model_allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	VkMemoryAllocateFlagsInfo allocateFlagsInfo = {};
+	allocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	allocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
 
-	if (vkAllocateMemory(window_->vk_device_, &model_allocInfo, nullptr, &model_buffer_memory_) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to allocate model matrix buffer memory!");
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = findMemoryType(window_->vk_physical_device_, memRequirements.memoryTypeBits, properties);
+	allocInfo.pNext = &allocateFlagsInfo;
+
+	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate buffer memory!");
 	}
 
-	if (vkBindBufferMemory(window_->vk_device_, model_buffer_, model_buffer_memory_, 0) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to bind model matrix buffer memory!");
-	}
+	vkBindBufferMemory(window_->vk_device_, buffer, bufferMemory, 0);
+}
 
+void object::uploadDataToBuffer(const void* data, VkDeviceMemory bufferMemory, VkDeviceSize size)
+{
+	void* mappedData;
+	vkMapMemory(window_->vk_device_, bufferMemory, 0, size, 0, &mappedData);
+	memcpy(mappedData, data, static_cast<size_t>(size));
+	vkUnmapMemory(window_->vk_device_, bufferMemory);
 }
 
 void object::update_model_matrix_buffer()

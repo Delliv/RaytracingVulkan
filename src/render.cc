@@ -60,24 +60,27 @@ void render::create_pipeline()
 	miss = createShaderModule(window_->vk_device_, miss_shader_code);
 	closestHit = createShaderModule(window_->vk_device_, closest_hit_shader_code);
 
-	std::array<VkPipelineShaderStageCreateInfo, 3> shaderStages;
+	std::array<VkPipelineShaderStageCreateInfo, 3> shaderStages = {};
 
 	shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStages[0].stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
 	shaderStages[0].module = raygen;
 	shaderStages[0].pName = "main";
+	shaderStages[0].flags = 0;
 
 	shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStages[1].stage = VK_SHADER_STAGE_MISS_BIT_KHR;
 	shaderStages[1].module = miss;
 	shaderStages[1].pName = "main";
+	shaderStages[2].flags = 0;
 
 	shaderStages[2].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStages[2].stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	shaderStages[2].module = closestHit;
 	shaderStages[2].pName = "main";
+	shaderStages[2].flags = 0;
 
-	std::array<VkRayTracingShaderGroupCreateInfoKHR, 3> shaderGroups;
+	std::array<VkRayTracingShaderGroupCreateInfoKHR, 3> shaderGroups = {};
 
 	// Raygen Shader Group
 	shaderGroups[0].sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -87,31 +90,24 @@ void render::create_pipeline()
 	shaderGroups[0].anyHitShader = VK_SHADER_UNUSED_KHR;
 	shaderGroups[0].intersectionShader = VK_SHADER_UNUSED_KHR;
 
-	// Closest Hit Shader Group
+	// Miss Shader Group
 	shaderGroups[1].sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-	shaderGroups[1].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
-	shaderGroups[1].generalShader = VK_SHADER_UNUSED_KHR;
-	shaderGroups[1].closestHitShader = 1; // Índice del shader closest hit en shaderStages
+	shaderGroups[1].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+	shaderGroups[1].generalShader = 1; // Índice del shader miss en shaderStages
+	shaderGroups[1].closestHitShader = VK_SHADER_UNUSED_KHR;
 	shaderGroups[1].anyHitShader = VK_SHADER_UNUSED_KHR;
 	shaderGroups[1].intersectionShader = VK_SHADER_UNUSED_KHR;
 
-	// Miss Shader Group
+	// Closest Hit Shader Group
 	shaderGroups[2].sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
-	shaderGroups[2].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
-	shaderGroups[2].generalShader = 2; // Índice del shader MISS en shaderStages
-	shaderGroups[2].closestHitShader = VK_SHADER_UNUSED_KHR;
+	shaderGroups[2].type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+	shaderGroups[2].generalShader = VK_SHADER_UNUSED_KHR;
+	shaderGroups[2].closestHitShader = 2; // Índice del shader closest hit en shaderStages
 	shaderGroups[2].anyHitShader = VK_SHADER_UNUSED_KHR;
 	shaderGroups[2].intersectionShader = VK_SHADER_UNUSED_KHR;
 
 	//--------------------------------------------------
-
-	//---------------- Input assembly -----------------
-	/*VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-	inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-	inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-	inputAssembly.primitiveRestartEnable = VK_FALSE;*/
-	//--------------------------------------------------
-
+	
 	//---------------- Viewport configuration -----------------
 	VkViewport viewport{};
 	viewport.x = 0.0f;
@@ -136,25 +132,6 @@ void render::create_pipeline()
 
 	//--------------------------------------------------
 
-	//---------------- Rasterizer configuration -----------------
-	/*VkPipelineRasterizationStateCreateInfo rasterizer{};
-	rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-	rasterizer.depthClampEnable = VK_FALSE; 
-	rasterizer.rasterizerDiscardEnable = VK_FALSE; 
-	rasterizer.polygonMode = VK_POLYGON_MODE_FILL; 
-	rasterizer.lineWidth = 1.0f; 
-	rasterizer.cullMode = VK_CULL_MODE_BACK_BIT; 
-	rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; 
-	rasterizer.depthBiasEnable = VK_FALSE;
-	//--------------------------------------------------
-	
-	//---------------- Multisampling configuration -----------------
-	VkPipelineMultisampleStateCreateInfo multisampling{};
-	multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-	multisampling.sampleShadingEnable = VK_FALSE; 
-	multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;*/
-	//--------------------------------------------------
-
 	//---------------- Colorblending configuration -----------------
 	VkPipelineColorBlendAttachmentState colorBlendAttachment{};
 	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
@@ -169,10 +146,11 @@ void render::create_pipeline()
 	//--------------------------------------------------
 
 	//---------------- Layout configuration -----------------
-	VkDescriptorSetLayout setLayouts[] = { window_->descriptor_set_layout };
+	VkDescriptorSetLayout setLayouts[] = {window_->descriptor_set_layout ,
+										   };
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = 1;
+	pipelineLayoutInfo.setLayoutCount = sizeof(setLayouts) / sizeof(setLayouts[0]);
 	pipelineLayoutInfo.pSetLayouts = setLayouts;
 	pipelineLayoutInfo.pushConstantRangeCount = 0; 
 	pipelineLayoutInfo.pPushConstantRanges = nullptr; 
@@ -255,12 +233,16 @@ void render::create_SBT_buffer()
 	VkMemoryRequirements memRequirements;
 	vkGetBufferMemoryRequirements(window_->vk_device_, SBT_buffer_, &memRequirements);
 
+	VkMemoryAllocateFlagsInfo memoryAllocateFlagsInfo{};
+	memoryAllocateFlagsInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
+	memoryAllocateFlagsInfo.flags = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+
 	// Información para la asignación de memoria
 	VkMemoryAllocateInfo allocInfo = {};
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.allocationSize = memRequirements.size;
 	allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
+	allocInfo.pNext = &memoryAllocateFlagsInfo;
 	// Asignar memoria
 	if (vkAllocateMemory(window_->vk_device_, &allocInfo, nullptr, &SBT_buffer_memory_) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate buffer memory!");
@@ -314,8 +296,7 @@ void render::create_command_pool()
 
 }
 
-
-void render::record_command_buffers()
+void render::create_command_buffers()
 {
 	command_buffers.resize(window_->swap_chain_images.size());
 	VkCommandBufferAllocateInfo allocInfo{};
@@ -327,8 +308,10 @@ void render::record_command_buffers()
 	if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, command_buffers.data()) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate command buffers!");
 	}
+}
 
 
+void render::record_command_buffers() {
 	for (size_t i = 0; i < command_buffers.size(); i++) {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -337,83 +320,62 @@ void render::record_command_buffers()
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-
-		// Aquí asumimos que ya tienes preparada la información de construcción de la TLAS
-		VkAccelerationStructureBuildGeometryInfoKHR tlasBuildInfo = window_->VkAccelerationStructureBuildGeometryInfoKHR_info_;
-		// Configura tlasBuildInfo según lo que hiciste en create_TLAS()
-		uint32_t instanceCount = static_cast<uint32_t>(window_->blas_instances_.size());
-		VkAccelerationStructureBuildRangeInfoKHR tlasRangeInfo{};
-		tlasRangeInfo.primitiveCount = instanceCount;  // El número de instancias
-		tlasRangeInfo.primitiveOffset = 0;             // Offset de la primera instancia
-		tlasRangeInfo.firstVertex = 0;                 // Usualmente 0 para TLAS
-		tlasRangeInfo.transformOffset = 0;             // Offset para una matriz de transformación, si se usa
-
-		// Grabar comando para construir la TLAS
-		VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &tlasRangeInfo;
+		// Verificar si necesitas construir/actualizar la TLAS
+		VkBufferDeviceAddressInfo bufferDeviceAI = {};
+		bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+		bufferDeviceAI.buffer = window_->scratch_buffer_; // Asegúrate de que scratchBuffer es el búfer de scratch correcto
+		VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &window_->tlasBuildRangeInfo;
 		pfnVkCmdBuildAccelerationStructuresKHR(
 			command_buffers[i],
 			1, // Número de estructuras para construir
-			&tlasBuildInfo, // Información de la estructura de aceleración
+			&window_->VkAccelerationStructureBuildGeometryInfoKHR_info_, // Información de la estructura de aceleración
 			&pTlasBuildRangeInfo // Información del rango de construcción
 		);
-
-		// Comandos para configurar y realizar el trazado de rayos
-	   // Bind del pipeline de ray tracing
-		vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_);
-
-		for (int j = 0; j < window_->descriptorSets_.size(); j++) {
-			// Bind de sets de descriptores (asegúrate de haberlos configurado previamente)
-			vkCmdBindDescriptorSets(command_buffers[i],
-				VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
-				pipelineLayout,
-				0,
-				1,
-				&window_->descriptorSets_.at(j),
-				0,
-				nullptr);
-		}
+			// Asegúrate de añadir cualquier sincronización necesaria aquí
+		
 
 		// Inicio del render pass
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = window_->render_pass_; // Asegúrate de tener esta referencia en window
-		renderPassInfo.framebuffer = window_->framebuffers_[i]; // Usa el framebuffer adecuado
+		renderPassInfo.renderPass = window_->render_pass_;
+		renderPassInfo.framebuffer = window_->framebuffers_[i];
 		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = window_->swapchain_info.imageExtent; // Usa el extent de tu swap chain
+		renderPassInfo.renderArea.extent = window_->swapchain_info.imageExtent;
 
-		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} }; // Color de fondo
+		VkClearValue clearColor = { {{0.0f, 0.0f, 0.0f, 1.0f}} };
 		renderPassInfo.clearValueCount = 1;
 		renderPassInfo.pClearValues = &clearColor;
 
 		vkCmdBeginRenderPass(command_buffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		// Trazado de rayos
-		VkBufferDeviceAddressInfo bufferDeviceAI{};
-		bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-		bufferDeviceAI.buffer = SBT_buffer_;  // SBT_buffer es tu VkBuffer
-		VkDeviceAddress SBR_address = vkGetBufferDeviceAddress(window_->vk_device_, &bufferDeviceAI);
-		VkStridedDeviceAddressRegionKHR raygenRegion = { };
-		raygenRegion.deviceAddress = SBR_address + 0 * stride_size_;
-		raygenRegion.stride = stride_size_;
-		raygenRegion.size = stride_size_;
-		VkStridedDeviceAddressRegionKHR missRegion = {  };
-		missRegion.deviceAddress = SBR_address + 1 * stride_size_;
-		missRegion.size = stride_size_;
-		missRegion.stride = stride_size_;
-		VkStridedDeviceAddressRegionKHR hitRegion = {  };
-		hitRegion.deviceAddress = SBR_address + 2 * stride_size_;
-		hitRegion.size = stride_size_;
-		hitRegion.stride = stride_size_;
+		// Configuración y trazado de rayos
+		vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_);
+
+		vkCmdBindDescriptorSets(command_buffers[i],
+			VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
+			pipelineLayout,
+			0,
+			1,
+			&window_->descriptorSets_.at(i),
+			0,
+			nullptr);
+
+		// Configuración de las regiones del SBT para trazado de rayos
+		// Asegúrate de que estas regiones estén configuradas correctamente
+		VkStridedDeviceAddressRegionKHR raygenRegion = {/* ... */ };
+		VkStridedDeviceAddressRegionKHR missRegion = {/* ... */ };
+		VkStridedDeviceAddressRegionKHR hitRegion = {/* ... */ };
 		VkStridedDeviceAddressRegionKHR callableRegion = {/* ... */ };
+
 		pfnVkCmdTraceRaysKHR(
 			command_buffers[i],
 			&raygenRegion,
 			&missRegion,
 			&hitRegion,
 			&callableRegion,
-			window_->swapchain_info.imageExtent.width,  // Ancho del framebuffer
-			window_->swapchain_info.imageExtent.height, // Altura del framebuffer
-			1       // Profundidad
+			window_->swapchain_info.imageExtent.width,
+			window_->swapchain_info.imageExtent.height,
+			1
 		);
 
 		vkCmdEndRenderPass(command_buffers[i]);

@@ -28,6 +28,7 @@ public:
 	std::vector<char> readFile(const std::string& filename);
 	// Command buffer
 	void create_command_pool();
+	void create_command_buffers();
 	void record_command_buffers();
 
 	void render_scene();
@@ -35,6 +36,7 @@ public:
 	void init_semaphore();
 
 	uint8_t current_frame_;
+	friend window;
 private:
 	// Command pool and command buffers
 	VkCommandPool command_pool_;

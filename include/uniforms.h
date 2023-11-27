@@ -12,10 +12,9 @@ struct UniformBufferObject {
 };
 
 struct Vertex {
-    std::vector<glm::vec3> vertices;;
+    std::vector<glm::vec3> vertices;
     glm::vec3 color;
     std::vector<glm::vec3> normals;
-    glm::uvec2 blasHandle;
 };
 
 struct BLASInstance {

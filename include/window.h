@@ -14,6 +14,8 @@
 #include "vulkan_loader.h"
 
 class object;
+class render;
+class camera;
 
 class window {
 public:
@@ -80,15 +82,21 @@ public:
 	PFN_vkCreateAccelerationStructureKHR pfnVkCreateAccelerationStructureKHR;
 	PFN_vkCmdBuildAccelerationStructuresKHR pfnVkCmdBuildAccelerationStructuresKHR;
 	PFN_vkGetAccelerationStructureBuildSizesKHR pfnVkGetAccelerationStructureBuildSizesKHR;
+	PFN_vkGetBufferDeviceAddressKHR PpfnVkGetBufferDeviceAddressKHR;
+
 	void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 	// Change these names
-	void createDescriptorSetLayout();
+	void createSpecificDescriptorSetLayouts();
+	VkDescriptorSetLayout createDescriptorSetLayout(VkDevice vk_device,
+		VkDescriptorType descriptorType,
+		VkShaderStageFlags stageFlags,
+		uint32_t binding);
 	void createDescriptorPool();
 	void createDescriptorSets();
 	void updateDescriptorSets();
 
-	void create_TLAS();
+	void create_TLAS(render* render_);
 	uint32_t give_blas_id();
 	QueueFamilyIndices indices;
 	// Getters
@@ -96,6 +104,7 @@ public:
 	VkSurfaceKHR get_vulkan_surface();
 	// Setters
 	void set_clear_color(float r, float g, float b, float a);
+	void set_camera_data(camera* c);
 
 	void allocate_memory_for_buffers(VkBuffer* buffer, VkDeviceMemory* buffer_memory, const void* data, VkDeviceSize data_size);
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
@@ -104,6 +113,7 @@ public:
 
 	friend class render;
 	friend class object;
+	friend class camera;
 private:
 	// Window stuff
 	GLFWwindow* window_;
@@ -141,21 +151,16 @@ private:
 	VkDescriptorSetLayoutCreateInfo layout_info;
 	VkDescriptorPoolSize pool_size;
 	VkDescriptorPoolCreateInfo pool_info;
-	VkDescriptorSetLayout descriptor_set_layout;
+	VkDescriptorSetLayout descriptor_set_layout;	// Currently i am using this one
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSetLayout> layouts;
-	std::vector<VkDescriptorSet> descriptors_set;
 	std::vector<VkDescriptorSet> descriptorSets_;
-
-	// Change these names
-	std::vector<VkDescriptorSetLayout> desciptors_set_layouts_;
-	VkDescriptorSetLayout descriptorSetLayoutModelMatrix; // Para la matriz modelo
-	VkDescriptorSetLayout descriptorSetLayoutVertex;      // Para los vértices
-	VkDescriptorSetLayout descriptorSetLayoutBLAS;      // Para los vértices
+	// DescriptorSetLayouts deprecated
+	VkDescriptorSetLayout camera_descriptor_set_layout_;
+	VkDescriptorSetLayout model_descriptor_set_layout_;
+	VkDescriptorSetLayout position_descriptor_set_layout_;
+	VkDescriptorSetLayout blas_descriptor_set_layout_;
 	
-	std::vector<VkDescriptorSet> descriptorSetsModelMatrix;
-	std::vector<VkDescriptorSet> descriptorSetsVertex;
-	std::vector<VkDescriptorSet> descriptorSetsBLAS;
 
 	// Change these names
 	std::vector<VkBuffer> modelMatrixBuffers;
@@ -192,11 +197,26 @@ private:
 	
 	// TLAS
 	uint32_t blas_id_;
+	VkAccelerationStructureKHR TLAS_;
 	std::vector<BLASInstance> blas_instances_;
 	std::vector<VkAccelerationStructureInstanceKHR> vk_acceleration_structure_instances_;
 	VkBuffer TLAS_buffer_;
 	VkDeviceMemory TLAS_memory_buffer_;
 	VkAccelerationStructureBuildGeometryInfoKHR VkAccelerationStructureBuildGeometryInfoKHR_info_;
+	VkAccelerationStructureGeometryKHR TLASGeometry{};
+	VkBuffer instancesBuffer;
+	VkDeviceMemory instancesBufferMemory;
+	VkAccelerationStructureBuildRangeInfoKHR tlasBuildRangeInfo;
+
+
+	VkBuffer scratch_buffer_;
+	VkDeviceMemory scratch_buffer_memory_;
+
+	// Camera
+	glm::vec3 cam_position;
+	glm::mat4 cam_viewMatrix;
+	glm::mat4 cam_projectionMatrix;
+
 };
 
 

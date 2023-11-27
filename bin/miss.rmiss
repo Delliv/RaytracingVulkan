@@ -1,8 +1,7 @@
-#version 460
-#extension GL_NV_ray_tracing : enable
-
-layout(location = 0) rayPayloadNV vec3 hitColor;
+#version 460 core
+#extension GL_EXT_ray_tracing : enable
+layout(location = 0) rayPayloadInEXT vec4 payload;
 
 void main() {
-    hitColor = vec3(0.5, 0.5, 0.5);  // Color de fondo, por ejemplo un gris claro
+    payload = vec4(0.0, 0.0, 0.0, 0.0);
 }

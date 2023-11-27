@@ -18,6 +18,8 @@ public:
 	void scale(const glm::vec3& scale);
 	void create_BLAS();
 	void create_buffers();
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+	void uploadDataToBuffer(const void* data, VkDeviceMemory bufferMemory, VkDeviceSize size);
 	void object::update_model_matrix_buffer();
 
 	glm::mat4 get_matrix() {
@@ -27,8 +29,12 @@ public:
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 
 	VkDeviceAddress getBLASDeviceAddress(VkDevice d);
-	VkBuffer vertex_buffer_;
-	VkDeviceMemory vertex_buffer_memory_;
+	VkBuffer vertices_buffer_;
+	VkDeviceMemory vertices_buffer_memory_;
+	VkBuffer color_buffer_;
+	VkDeviceMemory color_buffer_memory_;
+	VkBuffer normal_buffer_;
+	VkDeviceMemory normal_buffer_memory_;
 	VkBuffer index_buffer_;
 	VkDeviceMemory index_buffer_memory_;
 	VkBuffer model_buffer_;

@@ -1,24 +1,34 @@
-#version 460
-#extension GL_NV_ray_tracing : enable
+#version 460 core
+#extension GL_EXT_ray_tracing : enable
 
-// Definiendo un tamaño máximo para los arrays. 
-// Ajusta este número según tus necesidades.
-const int MAX_VERTICES = 1000;
-
-layout(set = 0, binding = 2, std430) buffer VertexAttributes {
-    vec3 colors[MAX_VERTICES];
-    vec3 normals[MAX_VERTICES];
+struct Vertex {
+    vec3 position;
+    vec3 color;
+    vec3 normal;
 };
 
-layout(location = 0) rayPayloadNV vec3 hitColor;
+layout(binding = 0, set = 0) buffer Vertices {
+    Vertex vertices[];
+};
+
+layout(binding = 1, set = 0) uniform Matrices {
+    mat4 modelMatrix;
+};
+
+layout(binding = 2, set = 0) uniform accelerationStructureEXT blas;
+
+
+layout(location = 0) rayPayloadInEXT vec4 payload;
 
 void main() {
-    uint vertexIndex = gl_PrimitiveID * 3 + gl_InstanceCustomIndexNV;  // Asumiendo triángulos
-    vec3 vertexColor = colors[vertexIndex];
-    vec3 vertexNormal = normals[vertexIndex];
+    // Aquí puedes acceder a los datos de los vértices y a la matriz del modelo
+    // Por ejemplo, para obtener la posición transformada del primer vértice:
+    vec3 transformedPosition = (modelMatrix * vec4(vertices[0].position, 1.0)).xyz;
 
-    // Iluminación básica usando el modelo de Lambert
-    float lightIntensity = max(dot(vertexNormal, normalize(vec3(1.0, 1.0, -1.0))), 0.0);
-    hitColor = vertexColor * lightIntensity;
+    // Puedes usar la información de los vértices y la BLAS como necesites
+    // ...
+
+    // Establece el valor de 'payload' según tus necesidades
+    payload = vec4(0.0, 1.0, 0.0, 1.0); // Valor de ejemplo
 }
 
