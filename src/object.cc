@@ -330,7 +330,7 @@ void object::create_BLAS()
 void object::create_buffers()
 {
 	VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
-	createBuffer(vertex_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertices_buffer_, vertices_buffer_memory_);
+	createBuffer(vertex_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertices_buffer_, vertices_buffer_memory_);
 	uploadDataToBuffer(vertex_.vertices.data(), vertices_buffer_memory_, vertex_bufferSize);
 
 	// Crear y configurar el buffer de índices
@@ -339,7 +339,7 @@ void object::create_buffers()
 	uploadDataToBuffer(indices_.data(), index_buffer_memory_, index_bufferSize);
 
 	// Crear y configurar el buffer de normales
-	VkDeviceSize normal_bufferSize = sizeof(vertex_.normals[0]) * vertex_.normals.size();
+	/*VkDeviceSize normal_bufferSize = sizeof(vertex_.normals[0]) * vertex_.normals.size();
 	createBuffer(normal_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, normal_buffer_, normal_buffer_memory_);
 	uploadDataToBuffer(vertex_.normals.data(), normal_buffer_memory_, normal_bufferSize);
 
@@ -347,7 +347,7 @@ void object::create_buffers()
 	VkDeviceSize color_bufferSize = sizeof(vertex_.color);
 	createBuffer(color_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, color_buffer_, color_buffer_memory_);
 	uploadDataToBuffer(&vertex_.color, color_buffer_memory_, color_bufferSize);
-
+	*/
 	// Crear y configurar el buffer para la matriz del modelo
 	VkDeviceSize model_bufferSize = sizeof(glm::mat4);
 	createBuffer(model_bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, model_buffer_, model_buffer_memory_);

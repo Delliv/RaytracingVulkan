@@ -15,7 +15,7 @@ layout(binding = 1, set = 0) uniform Matrices {
     mat4 modelMatrix;
 };
 
-layout(binding = 2, set = 0) uniform accelerationStructureEXT blas;
+layout(binding = 2, set = 0) uniform accelerationStructureEXT TLAS;
 
 
 layout(location = 0) rayPayloadInEXT vec4 payload;

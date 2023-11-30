@@ -15,12 +15,13 @@
 #include <fstream>
 #include "vulkan_loader.h"
 
+class camera;
 class render {
 public:
 	render();
-	render(window* w);
+	render(window* w, camera* c);
 	~render();
-	
+
 	void create_pipeline();
 	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	VkShaderModule createShaderModule(VkDevice device, const std::vector<char>& code);
@@ -36,12 +37,19 @@ public:
 	void init_semaphore();
 
 	uint8_t current_frame_;
+
+
+	// Descriptors
+	void createSpecificDescriptorSetLayouts();
+	void createDescriptorPool();
+	void createDescriptorSets();
+	void updateDescriptorSets();
 	friend window;
 private:
 	// Command pool and command buffers
 	VkCommandPool command_pool_;
 	std::vector<VkCommandBuffer> command_buffers;
-	
+
 	// Pipeline
 	VkPipeline pipeline_;
 	VkPipelineLayout pipelineLayout;
@@ -73,8 +81,20 @@ private:
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;
 	const int MAX_FRAMES_IN_FLIGHT = 2; // o cualquier número que necesites
-};
 
+
+	// Descriptors
+	VkDescriptorSetLayoutBinding descriptor_layout;
+	VkDescriptorSetLayoutCreateInfo layout_info;
+	VkDescriptorPoolSize pool_size;
+	VkDescriptorPoolCreateInfo pool_info;
+	VkDescriptorSetLayout descriptor_set_layout;	// Currently i am using this one
+	VkDescriptorPool descriptor_pool;
+	std::vector<VkDescriptorSetLayout> layouts;
+	VkDescriptorSet descriptorSets_;
+
+	camera* camera_;
+};
 
 #endif 
 

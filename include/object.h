@@ -55,6 +55,8 @@ public:
 
 	VkAccelerationStructureKHR acceleration_structure_;
 	uint32_t blas_id_;
+
+	friend render;
 private:
 	glm::mat4 transform_;
 	Vertex vertex_;

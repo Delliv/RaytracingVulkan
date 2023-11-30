@@ -7,7 +7,7 @@
 #include "gtc/matrix_transform.hpp"
 
 class window;
-
+class render;
 class camera {
 public:
 	camera(window *w);
@@ -20,7 +20,9 @@ public:
 	void create_buffer();
 	uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 	friend window;
+	friend render;
 private:
+
 	glm::vec3 position;
 	glm::mat4 viewMatrix;
 	glm::mat4 projectionMatrix;

@@ -12,8 +12,8 @@
 int main() {
 	std::cout << "Current path: " << std::filesystem::current_path() << std::endl;
 	std::shared_ptr<window> window_ = std::make_unique<window>();
-	std::unique_ptr<render> render_ = std::make_unique<render>(window_.get());
 	std::unique_ptr<camera> camera_ = std::make_unique<camera>(window_.get());
+	std::unique_ptr<render> render_ = std::make_unique<render>(window_.get(), camera_.get());
 	
 
 	object obj(window_.get());
@@ -21,8 +21,9 @@ int main() {
 	obj.create_BLAS();
 
 	window_->scene_objects_.push_back(obj);
-	window_->createSpecificDescriptorSetLayouts();
-	window_->createDescriptorPool();
+	render_->createSpecificDescriptorSetLayouts();
+	render_->createDescriptorPool();
+	render_->createDescriptorSets();
 	render_->create_command_pool();
 	render_->create_command_buffers();
 

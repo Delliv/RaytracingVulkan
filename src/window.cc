@@ -598,252 +598,6 @@ VkDeviceAddress window::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
 	return PpfnVkGetBufferDeviceAddressKHR(device, &bufferDeviceAI);
 }
 
-void window::createSpecificDescriptorSetLayouts()
-{
-	// Define seis bindings en el layout de descriptor set
-	std::array<VkDescriptorSetLayoutBinding, 6> layoutBindings{};
-
-	// Configuración de cada binding
-	
-	// Binding 1: Posiciones de vértices
-	layoutBindings[0].binding = 0;
-	layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	layoutBindings[0].descriptorCount = 1;
-	layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-	layoutBindings[0].pImmutableSamplers = nullptr;
-
-	// Binding 5: BLAS
-	layoutBindings[1].binding = 2;
-	layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	layoutBindings[1].descriptorCount = 1;
-	layoutBindings[1].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-	layoutBindings[1].pImmutableSamplers = nullptr;
-	// Binding 0: Matriz modelo
-	layoutBindings[2].binding = 1;
-	layoutBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBindings[2].descriptorCount = 1;
-	layoutBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-	layoutBindings[2].pImmutableSamplers = nullptr;
-
-	// Binding 4: Datos de la cámara
-	layoutBindings[3].binding = 3;
-	layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBindings[3].descriptorCount = 1;
-	layoutBindings[3].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-	layoutBindings[3].pImmutableSamplers = nullptr;
-	
-	/*
-	position_descriptor_set_layout_ = createDescriptorSetLayout(vk_device_,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-		0); // Binding para posición de vértices
-
-	model_descriptor_set_layout_ = createDescriptorSetLayout(vk_device_,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-		1); // Binding para matriz modelo
-
-	blas_descriptor_set_layout_ = createDescriptorSetLayout(vk_device_,
-		VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
-		VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
-		2); // Binding para BLAS
-
-	camera_descriptor_set_layout_ = createDescriptorSetLayout(vk_device_,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		VK_SHADER_STAGE_RAYGEN_BIT_KHR,
-		3); // Binding para datos de la cámara
-		*/
-	
-	// To be used
-	// Binding 2: Normales de vértices
-	layoutBindings[4].binding = 4;
-	layoutBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	layoutBindings[4].descriptorCount = 1;
-	layoutBindings[4].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	layoutBindings[4].pImmutableSamplers = nullptr;
-
-	// Binding 3: Color de vértices
-	layoutBindings[5].binding = 5;
-	layoutBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBindings[5].descriptorCount = 1;
-	layoutBindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	layoutBindings[5].pImmutableSamplers = nullptr;
-
-
-
-	// Crea un único descriptor set layout que incluya todos los bindings
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = static_cast<uint32_t>(layoutBindings.size());
-	layoutInfo.pBindings = layoutBindings.data();
-
-	if (vkCreateDescriptorSetLayout(vk_device_, &layoutInfo, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create descriptor set layout!");
-	}
-	
-}
-
-VkDescriptorSetLayout window::createDescriptorSetLayout(VkDevice vk_device, VkDescriptorType descriptorType, VkShaderStageFlags stageFlags, uint32_t binding)
-{
-	VkDescriptorSetLayoutBinding layoutBinding = {};
-	layoutBinding.binding = binding;
-	layoutBinding.descriptorType = descriptorType;
-	layoutBinding.descriptorCount = 1;
-	layoutBinding.stageFlags = stageFlags;
-	layoutBinding.pImmutableSamplers = nullptr; // Opcional
-
-	VkDescriptorSetLayoutCreateInfo layoutInfo = {};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = 1;
-	layoutInfo.pBindings = &layoutBinding;
-
-	VkDescriptorSetLayout descriptorSetLayout;
-	if (vkCreateDescriptorSetLayout(vk_device, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor set layout!");
-	}
-
-	return descriptorSetLayout;
-}
-
-void window::createDescriptorPool() {
-	std::array<VkDescriptorPoolSize, 4> poolSizes{};
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-	poolSizes[0].descriptorCount = 10; // Asumiendo que necesitas 10 uniform buffers
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[1].descriptorCount = 20; // Asumiendo que necesitas 10 storage buffers
-	poolSizes[2].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-	poolSizes[2].descriptorCount = 1; // Si solo necesitas una estructura de aceleración
-	//poolSizes[3].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	//poolSizes[3].descriptorCount = 1; // Si necesitas más storage buffers
-	
-	VkDescriptorPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = 100; // Asumiendo que necesitas 31 sets en total
-
-	if (vkCreateDescriptorPool(vk_device_, &poolInfo, nullptr, &descriptor_pool) != VK_SUCCESS) {
-		throw std::runtime_error("Failed to create descriptor pool!");
-	}
-}
-void window::createDescriptorSets()
-{
-	// Numero de descriptor sets a crear
-	const size_t numDescriptorSets = 4;  // Uno para cada tipo de dato
-	std::vector<VkDescriptorSet> descriptorSets(numDescriptorSets);
-
-	// Descripción de los layouts de los descriptor sets
-	// Asumo que tienes VkDescriptorSetLayout para cada tipo de recurso
-	VkDescriptorSetLayout layouts[] = {
-		position_descriptor_set_layout_,   // Layout para posición de vértices
-		model_descriptor_set_layout_,      // Layout para matriz modelo
-		blas_descriptor_set_layout_,       // Layout para BLAS
-		camera_descriptor_set_layout_      // Layout para datos de la cámara
-	};
-
-	VkDescriptorSetAllocateInfo allocInfo = {};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = descriptor_pool;
-	allocInfo.descriptorSetCount = numDescriptorSets;
-	allocInfo.pSetLayouts = layouts;
-
-	// Asignar los descriptor sets
-	if (vkAllocateDescriptorSets(vk_device_, &allocInfo, descriptorSets.data()) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate descriptor sets!");
-	}
-
-	
-	// Guardar o procesar los descriptor sets según sea necesario
-	// Por ejemplo, puedes almacenarlos en miembros de clase o variables
-}
-void window::updateDescriptorSets() {
-	for (size_t i = 0; i < scene_objects_.size(); ++i) {
-		auto& obj = scene_objects_[i];
-		VkDescriptorSet currentSet = descriptorSets_[i];
-
-		// Información del descriptor para la matriz modelo
-		VkDescriptorBufferInfo modelMatrixBufferInfo{};
-		modelMatrixBufferInfo.buffer = obj.model_buffer_;
-		modelMatrixBufferInfo.offset = 0;
-		modelMatrixBufferInfo.range = sizeof(glm::mat4);
-
-		VkWriteDescriptorSet descriptorWriteModelMatrix{};
-		descriptorWriteModelMatrix.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteModelMatrix.dstSet = currentSet;
-		descriptorWriteModelMatrix.dstBinding = 0;
-		descriptorWriteModelMatrix.dstArrayElement = 0;
-		descriptorWriteModelMatrix.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWriteModelMatrix.descriptorCount = 1;
-		descriptorWriteModelMatrix.pBufferInfo = &modelMatrixBufferInfo;
-
-		// Información del descriptor para el buffer de vértices (posiciones)
-		VkDescriptorBufferInfo vertexBufferInfo{};
-		vertexBufferInfo.buffer = obj.vertices_buffer_;
-		vertexBufferInfo.offset = 0;
-		vertexBufferInfo.range = VK_WHOLE_SIZE;
-
-		VkWriteDescriptorSet descriptorWriteVertex{};
-		descriptorWriteVertex.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteVertex.dstSet = currentSet;
-		descriptorWriteVertex.dstBinding = 1;
-		descriptorWriteVertex.dstArrayElement = 0;
-		descriptorWriteVertex.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWriteVertex.descriptorCount = 1;
-		descriptorWriteVertex.pBufferInfo = &vertexBufferInfo;
-
-		// Información del descriptor para el buffer de normales
-		VkDescriptorBufferInfo normalBufferInfo{};
-		normalBufferInfo.buffer = obj.normal_buffer_;
-		normalBufferInfo.offset = 0;
-		normalBufferInfo.range = VK_WHOLE_SIZE;
-
-		VkWriteDescriptorSet descriptorWriteNormal{};
-		descriptorWriteNormal.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteNormal.dstSet = currentSet;
-		descriptorWriteNormal.dstBinding = 2;
-		descriptorWriteNormal.dstArrayElement = 0;
-		descriptorWriteNormal.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWriteNormal.descriptorCount = 1;
-		descriptorWriteNormal.pBufferInfo = &normalBufferInfo;
-
-		// Información del descriptor para el buffer de colores
-		VkDescriptorBufferInfo colorBufferInfo{};
-		colorBufferInfo.buffer = obj.color_buffer_;
-		colorBufferInfo.offset = 0;
-		colorBufferInfo.range = VK_WHOLE_SIZE;
-
-		VkWriteDescriptorSet descriptorWriteColor{};
-		descriptorWriteColor.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteColor.dstSet = currentSet;
-		descriptorWriteColor.dstBinding = 3;
-		descriptorWriteColor.dstArrayElement = 0;
-		descriptorWriteColor.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWriteColor.descriptorCount = 1;
-		descriptorWriteColor.pBufferInfo = &colorBufferInfo;
-
-		// Información del descriptor para la BLAS
-		VkWriteDescriptorSetAccelerationStructureKHR descriptorAccelerationStructureInfo{};
-		descriptorAccelerationStructureInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
-		descriptorAccelerationStructureInfo.accelerationStructureCount = 1;
-		descriptorAccelerationStructureInfo.pAccelerationStructures = &obj.acceleration_structure_;
-
-		VkWriteDescriptorSet descriptorWriteBLAS{};
-		descriptorWriteBLAS.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWriteBLAS.dstSet = currentSet;
-		descriptorWriteBLAS.dstBinding = 4;
-		descriptorWriteBLAS.dstArrayElement = 0;
-		descriptorWriteBLAS.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-		descriptorWriteBLAS.descriptorCount = 1;
-		descriptorWriteBLAS.pNext = &descriptorAccelerationStructureInfo;
-
-		std::array<VkWriteDescriptorSet, 5> writeDescriptorSets = {
-			descriptorWriteModelMatrix, descriptorWriteVertex, descriptorWriteNormal, descriptorWriteColor, descriptorWriteBLAS
-		};
-
-		vkUpdateDescriptorSets(vk_device_, static_cast<uint32_t>(writeDescriptorSets.size()), writeDescriptorSets.data(), 0, nullptr);
-	}
-}
-
 
 
 void window::create_TLAS(render* render_) {
@@ -911,14 +665,14 @@ void window::create_TLAS(render* render_) {
 
 
 	// Store the instances for the BLAS that will be used in the TLAS
-	std::vector<VkAccelerationStructureInstanceKHR> vkInstances(scene_objects_.size());
+	vk_acceleration_structure_instances_.resize(scene_objects_.size());
 
 	// Prepare the BLAS instances for inclusion in the TLAS
 	for (size_t i = 0; i < scene_objects_.size(); ++i) {
 		auto& obj = scene_objects_[i];
 
 		// Reference to the current instance to be updated
-		VkAccelerationStructureInstanceKHR& vkInstance = vkInstances[i];
+		VkAccelerationStructureInstanceKHR& vkInstance = vk_acceleration_structure_instances_[i];
 
 		// Convert glm::mat4 to VkTransformMatrixKHR by transposing it to match Vulkan's layout
 		glm::mat4 transform = obj.get_matrix(); // Esto obtiene tu glm::mat4
@@ -940,10 +694,12 @@ void window::create_TLAS(render* render_) {
 		vkInstance.instanceShaderBindingTableRecordOffset = 0; // The offset into the shader binding table.
 		vkInstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR; // Instance flags.
 		vkInstance.accelerationStructureReference = obj.getBLASDeviceAddress(vk_device_); // The BLAS reference.
+		vk_acceleration_structure_instances_.at(i) = (vkInstance);
+
 	}
 
 	// Create the buffer for the TLAS instances
-	VkDeviceSize instanceBufferSize = sizeof(VkAccelerationStructureInstanceKHR) * vkInstances.size();
+	VkDeviceSize instanceBufferSize = sizeof(VkAccelerationStructureInstanceKHR) * vk_acceleration_structure_instances_.size();
 
 	create_buffer(
 		instanceBufferSize,
@@ -956,13 +712,13 @@ void window::create_TLAS(render* render_) {
 	// Copy the BLAS instance data into the TLAS buffer
 	void* data;
 	vkMapMemory(vk_device_, instancesBufferMemory, 0, instanceBufferSize, 0, &data);
-	memcpy(data, vkInstances.data(), (size_t)instanceBufferSize);
+	memcpy(data, vk_acceleration_structure_instances_.data(), (size_t)instanceBufferSize);
 	vkUnmapMemory(vk_device_, instancesBufferMemory);
 
 
 
 	// Get the build sizes for the TLAS
-	uint32_t instanceCount = static_cast<uint32_t>(vkInstances.size());
+	uint32_t instanceCount = static_cast<uint32_t>(vk_acceleration_structure_instances_.size());
 	VkAccelerationStructureBuildSizesInfoKHR buildSizesInfo{};
 	buildSizesInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
 	buildSizesInfo.pNext = nullptr;

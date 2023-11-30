@@ -86,15 +86,7 @@ public:
 
 	void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
-	// Change these names
-	void createSpecificDescriptorSetLayouts();
-	VkDescriptorSetLayout createDescriptorSetLayout(VkDevice vk_device,
-		VkDescriptorType descriptorType,
-		VkShaderStageFlags stageFlags,
-		uint32_t binding);
-	void createDescriptorPool();
-	void createDescriptorSets();
-	void updateDescriptorSets();
+
 
 	void create_TLAS(render* render_);
 	uint32_t give_blas_id();
@@ -145,22 +137,6 @@ private:
 	VkRenderPass render_pass_;
 
 	VkPhysicalDeviceProperties deviceProperties;
-
-	// Descriptors
-	VkDescriptorSetLayoutBinding descriptor_layout;
-	VkDescriptorSetLayoutCreateInfo layout_info;
-	VkDescriptorPoolSize pool_size;
-	VkDescriptorPoolCreateInfo pool_info;
-	VkDescriptorSetLayout descriptor_set_layout;	// Currently i am using this one
-	VkDescriptorPool descriptor_pool;
-	std::vector<VkDescriptorSetLayout> layouts;
-	std::vector<VkDescriptorSet> descriptorSets_;
-	// DescriptorSetLayouts deprecated
-	VkDescriptorSetLayout camera_descriptor_set_layout_;
-	VkDescriptorSetLayout model_descriptor_set_layout_;
-	VkDescriptorSetLayout position_descriptor_set_layout_;
-	VkDescriptorSetLayout blas_descriptor_set_layout_;
-	
 
 	// Change these names
 	std::vector<VkBuffer> modelMatrixBuffers;
