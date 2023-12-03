@@ -310,14 +310,28 @@ void render::create_command_buffers()
 	if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo, command_buffers.data()) != VK_SUCCESS) {
 		throw std::runtime_error("failed to allocate command buffers!");
 	}
+
+	VkCommandBufferAllocateInfo allocInfo_temp_buffer{};
+	allocInfo_temp_buffer.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo_temp_buffer.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo_temp_buffer.commandPool = command_pool_; // Usa el mismo command pool que para tus otros command buffers
+	allocInfo_temp_buffer.commandBufferCount = 1;
+
+	if (vkAllocateCommandBuffers(window_->vk_device_, &allocInfo_temp_buffer, &temp_command_buffer) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to allocate temporary command buffer!");
+	}
 }
 
 
 void render::record_command_buffers() {
+	//vkWaitForFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
+	//vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
+
 	for (size_t i = 0; i < command_buffers.size(); i++) {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+		
 		if (vkBeginCommandBuffer(command_buffers[i], &beginInfo) != VK_SUCCESS) {
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
@@ -348,6 +362,30 @@ void render::record_command_buffers() {
 		renderPassInfo.clearValueCount = 1;
 		renderPassInfo.pClearValues = &clearColor;
 
+		// Transición de layout de la imagen para ray tracing
+		VkImageMemoryBarrier barrier{};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; // O el layout actual de la imagen
+		barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+		barrier.srcAccessMask = 0; // Dependiendo del uso previo de la imagen
+		barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT; // Si vas a escribir en la imagen desde un shader
+		barrier.image = window_->draw_image_buffer_; // La VkImage que estás usando para el ray tracing
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+
+		vkCmdPipelineBarrier(
+			command_buffers[i],
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, // O la etapa adecuada según el uso previo
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
 		vkCmdBeginRenderPass(command_buffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// Configuración y trazado de rayos
@@ -362,10 +400,10 @@ void render::record_command_buffers() {
 			0,
 			nullptr);
 		if(i == 0){
-			
-
 			updateDescriptorSets();
 		}
+
+
 		vkCmdEndRenderPass(command_buffers[i]);
 
 		if (i != 0) {
@@ -400,14 +438,15 @@ void render::record_command_buffers() {
 				1
 			);
 		}
+
 		if (vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to record command buffer!");
 		}
 	}
 }
 
-void render::render_scene()
-{
+void render::render_scene() {
+	
 	vkWaitForFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
@@ -419,41 +458,158 @@ void render::render_scene()
 
 	in_flight_images_[imageIndex] = in_flight_fences_[current_frame_];
 
-	updateDescriptorSets();
 
-	//record_command_buffers();
 
-	// Enviar el command buffer a la cola para su ejecución
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	// Iniciar un command buffer temporal para la copia y las transiciones de layout
+	vkWaitForFences(window_->vk_device_, 1, &temp_com_buffer_fence_, VK_TRUE, UINT64_MAX);
+	vkResetFences(window_->vk_device_, 1, &temp_com_buffer_fence_);
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	vkBeginCommandBuffer(temp_command_buffer, &beginInfo);
 
-	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[current_frame_] };
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = waitSemaphores;
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &command_buffers[imageIndex];
 
-	VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[current_frame_] };
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = signalSemaphores;
+	VkImageMemoryBarrier barrierToSrc = {};
+	barrierToSrc.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	barrierToSrc.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED; // Asumir un layout inicial desconocido
+	barrierToSrc.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	barrierToSrc.srcAccessMask = 0; // No hay operaciones pendientes que esperar
+	barrierToSrc.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT; // La imagen será leída en una operación de transferencia
+	barrierToSrc.image = window_->draw_image_buffer_;
+	barrierToSrc.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrierToSrc.subresourceRange.baseMipLevel = 0;
+	barrierToSrc.subresourceRange.levelCount = 1;
+	barrierToSrc.subresourceRange.baseArrayLayer = 0;
+	barrierToSrc.subresourceRange.layerCount = 1;
 
+	vkCmdPipelineBarrier(
+		temp_command_buffer,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, // No esperar ninguna etapa específica
+		VK_PIPELINE_STAGE_TRANSFER_BIT,    // Barrera antes de la etapa de transferencia
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &barrierToSrc
+	);
+
+
+
+	// Preparar la imagen del swap chain para la copia
+	VkImageMemoryBarrier swapchainImageBarrierToDst = {};
+	swapchainImageBarrierToDst.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	swapchainImageBarrierToDst.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	swapchainImageBarrierToDst.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	swapchainImageBarrierToDst.srcAccessMask = 0;
+	swapchainImageBarrierToDst.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	swapchainImageBarrierToDst.image = window_->swap_chain_images[imageIndex];
+	swapchainImageBarrierToDst.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	swapchainImageBarrierToDst.subresourceRange.baseMipLevel = 0;
+	swapchainImageBarrierToDst.subresourceRange.levelCount = 1;
+	swapchainImageBarrierToDst.subresourceRange.baseArrayLayer = 0;
+	swapchainImageBarrierToDst.subresourceRange.layerCount = 1;
+
+	vkCmdPipelineBarrier(
+		temp_command_buffer,
+		VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &swapchainImageBarrierToDst
+	);
+
+	// Copiar la imagen del ray tracing a la imagen del swap chain
+
+	VkImageCopy copyRegion = {};
+	copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copyRegion.srcSubresource.mipLevel = 0;
+	copyRegion.srcSubresource.baseArrayLayer = 0;
+	copyRegion.srcSubresource.layerCount = 1;
+	copyRegion.dstSubresource = copyRegion.srcSubresource;
+	copyRegion.srcOffset = { 0, 0, 0 };
+	copyRegion.dstOffset = { 0, 0, 0 };
+	copyRegion.extent.width = window_->swapchain_info.imageExtent.width;
+	copyRegion.extent.height = window_->swapchain_info.imageExtent.height;
+	copyRegion.extent.depth = 1;
+
+	vkCmdCopyImage(
+		temp_command_buffer,
+		window_->draw_image_buffer_, // Reemplazar con tu imagen de ray tracing
+		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		swapchainImageBarrierToDst.image,
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1,
+		&copyRegion
+	);
+
+	// Preparar la imagen del swap chain para la presentación
+	swapchainImageBarrierToDst.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	swapchainImageBarrierToDst.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	swapchainImageBarrierToDst.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	swapchainImageBarrierToDst.dstAccessMask = 0;
+	
+	vkCmdPipelineBarrier(
+		temp_command_buffer,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+		0,
+		0, nullptr,
+		0, nullptr,
+		1, &swapchainImageBarrierToDst
+	);
+
+	vkEndCommandBuffer(temp_command_buffer);
+
+	// Enviar el command buffer de copia
+	VkSubmitInfo copySubmitInfo{};
+	copySubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	copySubmitInfo.commandBufferCount = 1;
+	copySubmitInfo.pCommandBuffers = &temp_command_buffer;
+	VkSemaphore copySignalSemaphores[] = { copyFinishedSemaphore };
+	copySubmitInfo.signalSemaphoreCount = 1;
+	copySubmitInfo.pSignalSemaphores = copySignalSemaphores;
+
+	vkQueueSubmit(window_->graphicsQueue, 1, &copySubmitInfo, temp_com_buffer_fence_);
+
+	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[current_frame_], copyFinishedSemaphore };
+	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT }; // Ajusta según tus necesidades
+	VkSubmitInfo renderSubmitInfo{};
+	renderSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	renderSubmitInfo.waitSemaphoreCount = 2; // Esperando a dos semáforos
+	renderSubmitInfo.pWaitSemaphores = waitSemaphores;
+	renderSubmitInfo.pWaitDstStageMask = waitStages;
+	renderSubmitInfo.commandBufferCount = 1;
+	renderSubmitInfo.pCommandBuffers = &command_buffers[imageIndex];
+	VkSemaphore renderSignalSemaphores[] = { renderFinishedSemaphores[current_frame_] };
+	renderSubmitInfo.signalSemaphoreCount = 1;
+	renderSubmitInfo.pSignalSemaphores = renderSignalSemaphores;
+
+	vkWaitForFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
 	vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
+	vkQueueSubmit(window_->graphicsQueue, 1, &renderSubmitInfo, in_flight_fences_[current_frame_]);
 
-	if (vkQueueSubmit(window_->graphicsQueue, 1, &submitInfo, in_flight_fences_[current_frame_]) != VK_SUCCESS) {
+	// Continuar con la ejecución y presentación normal
+	/*renderSubmitInfo.pWaitSemaphores = waitSemaphores;
+	renderSubmitInfo.pWaitDstStageMask = waitStages;
+	renderSubmitInfo.commandBufferCount = 1;
+	renderSubmitInfo.pCommandBuffers = &command_buffers[imageIndex];
+	renderSubmitInfo.pSignalSemaphores = signalSemaphores;
+
+	//vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
+
+	//vkWaitForFences(window_->vk_device_, 1, &normal_execution_fence_, VK_TRUE, UINT64_MAX);
+	//vkResetFences(window_->vk_device_, 1, &normal_execution_fence_);
+	if (vkQueueSubmit(window_->graphicsQueue, 1, &renderSubmitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to submit draw command buffer!");
-	}
+	}*/
 
+	
 	// Presentar el frame
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = signalSemaphores;
-
-	VkSwapchainKHR swapChains[] = { window_->swapChain };
+	presentInfo.pWaitSemaphores = renderSignalSemaphores; // Espera a que el renderizado termine
 	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = swapChains;
+	presentInfo.pSwapchains = &window_->swapChain;
 	presentInfo.pImageIndices = &imageIndex;
 
 	result = vkQueuePresentKHR(window_->graphicsQueue, &presentInfo);
@@ -465,9 +621,9 @@ void render::render_scene()
 		throw std::runtime_error("Failed to present swap chain image!");
 	}
 
-	// Prepararse para el siguiente frame
 	current_frame_ = (current_frame_ + 1) % MAX_FRAMES_IN_FLIGHT;
 }
+
 
 void render::init_fences()
 {
@@ -482,6 +638,11 @@ void render::init_fences()
 			throw std::runtime_error("Failed to create synchronization objects for a frame!");
 		}
 	}
+
+	if (vkCreateFence(window_->vk_device_, &fenceInfo, nullptr, &temp_com_buffer_fence_) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create synchronization objects for a frame!");
+	}
+	
 
 
 }
@@ -502,12 +663,22 @@ void render::init_semaphore()
 			throw std::runtime_error("failed to create synchronization objects for a frame!");
 		}
 	}
+
+	if (vkCreateSemaphore(window_->vk_device_, &semaphoreInfo, nullptr, &copyFinishedSemaphore) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create copy finished semaphore!");
+	}
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		if (vkCreateSemaphore(window_->vk_device_, &semaphoreInfo, nullptr, &signalSemaphores[i]) != VK_SUCCESS) {
+			throw std::runtime_error("Failed to create render finished semaphore!");
+		}
+	}
 }
 
 void render::createSpecificDescriptorSetLayouts()
 {
 	// Define seis bindings en el layout de descriptor set
-	std::array<VkDescriptorSetLayoutBinding, 4> layoutBindings{};
+	std::array<VkDescriptorSetLayoutBinding, 5> layoutBindings{};
 
 	// Configuración de cada binding
 
@@ -520,7 +691,7 @@ void render::createSpecificDescriptorSetLayouts()
 
 	// Binding 1: Matriz modelo
 	layoutBindings[1].binding = 1;
-	layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	layoutBindings[1].descriptorCount = 1;
 	layoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	layoutBindings[1].pImmutableSamplers = nullptr;
@@ -538,21 +709,12 @@ void render::createSpecificDescriptorSetLayouts()
 	layoutBindings[3].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
 	layoutBindings[3].pImmutableSamplers = nullptr;
 
-	// To be used
-	// Binding 2: Normales de vértices
-	/*layoutBindings[4].binding = 4;
-	layoutBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	// Binding 4: Image to draw color result
+	layoutBindings[4].binding = 4;
+	layoutBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 	layoutBindings[4].descriptorCount = 1;
-	layoutBindings[4].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+	layoutBindings[4].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	layoutBindings[4].pImmutableSamplers = nullptr;
-
-	// Binding 3: Color de vértices
-	layoutBindings[5].binding = 5;
-	layoutBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	layoutBindings[5].descriptorCount = 1;
-	layoutBindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	layoutBindings[5].pImmutableSamplers = nullptr;
-	*/
 
 
 	// Crea un único descriptor set layout que incluya todos los bindings
@@ -607,9 +769,9 @@ void render::updateDescriptorSets()
 {
 	// Información del buffer de vértices
 	VkDescriptorBufferInfo vertexBufferInfo = {};
-	vertexBufferInfo.buffer = window_->scene_objects_.at(0).vertices_buffer_;
+	vertexBufferInfo.buffer = window_->scene_objects_.at(0).vertex_buffer_;
 	vertexBufferInfo.offset = 0;
-	vertexBufferInfo.range = VK_WHOLE_SIZE;
+	vertexBufferInfo.range = sizeof(Vertex) * window_->scene_objects_.at(0).vertex_.vertices.size();
 
 	// Información del buffer de la cámara
 	VkDescriptorBufferInfo cameraBufferInfo = {};
@@ -619,9 +781,9 @@ void render::updateDescriptorSets()
 
 	// Información del buffer de la matriz modelo
 	VkDescriptorBufferInfo modelMatrixBufferInfo = {};
-	modelMatrixBufferInfo.buffer = window_->scene_objects_.at(0).model_buffer_;
-	modelMatrixBufferInfo.offset = 0;
-	modelMatrixBufferInfo.range = VK_WHOLE_SIZE;
+	modelMatrixBufferInfo.buffer = window_->scene_objects_.at(0).vertex_buffer_;
+	modelMatrixBufferInfo.offset = sizeof(Vertex) * window_->scene_objects_.at(0).vertex_.vertices.size();
+	modelMatrixBufferInfo.range = sizeof(glm::mat4);
 
 	// Información de la TLAS
 	VkWriteDescriptorSetAccelerationStructureKHR tlasInfo = {};
@@ -629,7 +791,12 @@ void render::updateDescriptorSets()
 	tlasInfo.accelerationStructureCount = 1;
 	tlasInfo.pAccelerationStructures = &window_->TLAS_;
 
-	std::array<VkWriteDescriptorSet, 4> writeDescriptorSets = {};
+	// Información del buffer de la cámara
+	VkDescriptorImageInfo  imageInfo = {};
+	imageInfo.imageView = window_->draw_buffer_image_view_;
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	std::array<VkWriteDescriptorSet, 5> writeDescriptorSets = {};
 
 	// Descriptor para el buffer de vértices
 	writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -644,7 +811,7 @@ void render::updateDescriptorSets()
 	writeDescriptorSets[1].dstSet = descriptorSets_;
 	writeDescriptorSets[1].dstBinding = 1; // Asegúrate de que este índice coincida con tu layout
 	writeDescriptorSets[1].descriptorCount = 1;
-	writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	writeDescriptorSets[1].pBufferInfo = &modelMatrixBufferInfo;
 	// Descriptor para el buffer de la cámara
 	writeDescriptorSets[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -662,6 +829,14 @@ void render::updateDescriptorSets()
 	writeDescriptorSets[3].descriptorCount = 1;
 	writeDescriptorSets[3].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 	writeDescriptorSets[3].pNext = &tlasInfo;
+
+	// Descriptor para la image view
+	writeDescriptorSets[4].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSets[4].dstSet = descriptorSets_; 
+	writeDescriptorSets[4].dstBinding = 4;
+	writeDescriptorSets[4].descriptorCount = 1;
+	writeDescriptorSets[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE; 
+	writeDescriptorSets[4].pImageInfo = &imageInfo; 
 
 	// Actualizar los descriptor sets
 	vkUpdateDescriptorSets(window_->vk_device_, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);

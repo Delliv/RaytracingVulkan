@@ -49,6 +49,7 @@ private:
 	// Command pool and command buffers
 	VkCommandPool command_pool_;
 	std::vector<VkCommandBuffer> command_buffers;
+	VkCommandBuffer temp_command_buffer;
 
 	// Pipeline
 	VkPipeline pipeline_;
@@ -77,10 +78,13 @@ private:
 	// Render the scene
 	std::vector<VkFence> in_flight_fences_;
 	std::vector<VkFence> in_flight_images_;
-
+	VkFence temp_com_buffer_fence_;
 	std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;
+
 	const int MAX_FRAMES_IN_FLIGHT = 2; // o cualquier número que necesites
+	VkSemaphore copyFinishedSemaphore;
+	VkSemaphore signalSemaphores[2];
 
 
 	// Descriptors

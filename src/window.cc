@@ -124,6 +124,8 @@ void window::initialize_vulkan()
 
 	create_views();
 
+	create_draw_buffer();
+
 	render_pass();
 
 	create_framebuffers();
@@ -235,7 +237,7 @@ void window::logical_devices() {
 
 	VkPhysicalDeviceFeatures2 deviceFeatures2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	deviceFeatures2.pNext = &accelFeature;
-
+	printf("Crasheo aqui \n");
 	vkGetPhysicalDeviceFeatures2(vk_physical_device_, &deviceFeatures2);
 	if (!accelFeature.accelerationStructure || !rtPipelineFeature.rayTracingPipeline) {
 		throw std::runtime_error("Ray tracing features are not supported on this device.");
@@ -342,7 +344,7 @@ void window::create_presentation_queue_and_swapchain()
 	swapchain_info.imageArrayLayers = 1;
 
 
-	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	/*uint32_t queueFamilyIndices[] = {
 		indices.graphicsFamily.value(),
@@ -596,6 +598,54 @@ VkDeviceAddress window::getBufferDeviceAddress(VkDevice device, VkBuffer buffer)
 	bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	bufferDeviceAI.buffer = buffer;
 	return PpfnVkGetBufferDeviceAddressKHR(device, &bufferDeviceAI);
+}
+
+void window::create_draw_buffer()
+{
+	VkImageCreateInfo imageInfo{};
+	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	imageInfo.imageType = VK_IMAGE_TYPE_2D;
+	imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM;
+	imageInfo.extent.width = width_;  // Reemplaza con el ancho real de tu ventana
+	imageInfo.extent.height = height_; // Reemplaza con el alto real de tu ventana
+	imageInfo.extent.depth = 1;
+	imageInfo.mipLevels = 1;
+	imageInfo.arrayLayers = 1;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+	imageInfo.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	vkCreateImage(vk_device_, &imageInfo, nullptr, &draw_image_buffer_);
+
+	// 2. Asignar Memoria para el VkImage
+	VkMemoryRequirements memRequirements;
+	vkGetImageMemoryRequirements(vk_device_, draw_image_buffer_, &memRequirements);
+
+	VkMemoryAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.allocationSize = memRequirements.size;
+	allocInfo.memoryTypeIndex = // Necesitas encontrar el tipo de memoria adecuado aquí
+
+
+	vkAllocateMemory(vk_device_, &allocInfo, nullptr, &draw_image_buffer_memory_);
+
+	vkBindImageMemory(vk_device_, draw_image_buffer_, draw_image_buffer_memory_, 0);
+
+	// 3. Crear un VkImageView para el Buffer de Imagen
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = draw_image_buffer_;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = imageInfo.format;
+	viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	
+	vkCreateImageView(vk_device_, &viewInfo, nullptr, &draw_buffer_image_view_);
 }
 
 

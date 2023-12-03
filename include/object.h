@@ -20,6 +20,12 @@ public:
 	void create_buffers();
 	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	void uploadDataToBuffer(const void* data, VkDeviceMemory bufferMemory, VkDeviceSize size);
+	void uploadAllDataToSingleBuffer(const void* verticesData, VkDeviceSize verticesSize,
+		const void* indicesData, VkDeviceSize indicesSize,
+		const void* normalsData, VkDeviceSize normalsSize,
+		const void* colorData, VkDeviceSize colorSize,
+		const void* modelData, VkDeviceSize modelSize,
+		VkDeviceMemory bufferMemory);
 	void object::update_model_matrix_buffer();
 
 	glm::mat4 get_matrix() {
@@ -29,6 +35,11 @@ public:
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
 
 	VkDeviceAddress getBLASDeviceAddress(VkDevice d);
+	// Every data stored in a single Buffer
+	VkBuffer vertex_buffer_;
+	VkDeviceMemory vertex_buffer_memory_;
+
+
 	VkBuffer vertices_buffer_;
 	VkDeviceMemory vertices_buffer_memory_;
 	VkBuffer color_buffer_;

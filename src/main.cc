@@ -35,7 +35,7 @@ int main() {
 	render_->init_fences();
 	render_->init_semaphore();
 	render_->record_command_buffers();
-
+	
 
 	while (!glfwWindowShouldClose(window_->get_window())) {
 		render_->render_scene();

@@ -86,7 +86,7 @@ public:
 
 	void create_buffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
 	VkDeviceAddress getBufferDeviceAddress(VkDevice device, VkBuffer buffer);
-
+	void create_draw_buffer();
 
 	void create_TLAS(render* render_);
 	uint32_t give_blas_id();
@@ -168,7 +168,10 @@ private:
 	bool supportsAsync;
 	bool presentWithCompositeAlphaSupported;
 
-
+	// VkImage to draw 
+	VkImage draw_image_buffer_;
+	VkImageView draw_buffer_image_view_;
+	VkDeviceMemory draw_image_buffer_memory_;
 	VulkanLoader vk_loader_;
 	
 	// TLAS

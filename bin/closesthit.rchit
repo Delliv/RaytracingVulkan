@@ -3,15 +3,15 @@
 
 struct Vertex {
     vec3 position;
-    vec3 color;
     vec3 normal;
+    vec3 color;
 };
 
 layout(binding = 0, set = 0) buffer Vertices {
     Vertex vertices[];
 };
 
-layout(binding = 1, set = 0) uniform Matrices {
+layout(binding = 1, set = 0) buffer Matrices {
     mat4 modelMatrix;
 };
 
@@ -19,16 +19,21 @@ layout(binding = 2, set = 0) uniform accelerationStructureEXT TLAS;
 
 
 layout(location = 0) rayPayloadInEXT vec4 payload;
+layout(location = 1) rayPayloadInEXT vec3 hitNormal;
+layout(location = 2) rayPayloadInEXT vec3 hitColor;
+layout(binding = 4, rgba8) uniform writeonly image2D resultadoImagen;
 
 void main() {
-    // Aquí puedes acceder a los datos de los vértices y a la matriz del modelo
-    // Por ejemplo, para obtener la posición transformada del primer vértice:
-    vec3 transformedPosition = (modelMatrix * vec4(vertices[0].position, 1.0)).xyz;
+    /*vec3 normal = normalize((modelMatrix * vec4(hitNormal, 0.0)).xyz);
+    float intensity = dot(normal, -gl_WorldRayDirectionEXT);
+    intensity = max(intensity, 0.0);
+    //vec3 transformedPosition = (modelMatrix * vec4(vertices[0].position, 1.0)).xyz;
 
-    // Puedes usar la información de los vértices y la BLAS como necesites
-    // ...
 
     // Establece el valor de 'payload' según tus necesidades
-    payload = vec4(0.0, 1.0, 0.0, 1.0); // Valor de ejemplo
+    //payload = vec4(hitColor * intensity, 1.0); // Valor de ejemplo
+    */
+    ivec2 pixelCoord = ivec2(gl_LaunchIDEXT.xy);
+    imageStore(resultadoImagen, pixelCoord, vec4(1.0, 0.0, 0.0, 1.0)); // Almacenar un co;
 }
 

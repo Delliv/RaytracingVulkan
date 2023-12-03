@@ -212,16 +212,21 @@ void object::scale(const glm::vec3& scale)
 
 void object::create_BLAS()
 {
+	VkDeviceAddress baseAddress = getBufferDeviceAddress(window_->vk_device_, vertex_buffer_);
+	VkDeviceAddress vertexAddress = baseAddress;
+	VkDeviceAddress indexAddress = vertexAddress + sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
+
+
 	VkAccelerationStructureGeometryKHR geometry{};
 	geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 	geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 	geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
 	geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT; 
-	geometry.geometry.triangles.vertexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_,vertices_buffer_);
+	geometry.geometry.triangles.vertexData.deviceAddress = vertexAddress;
 	geometry.geometry.triangles.vertexStride = sizeof(Vertex); 
 	geometry.geometry.triangles.maxVertex = vertex_.vertices.size(); 
 	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32; 
-	geometry.geometry.triangles.indexData.deviceAddress = getBufferDeviceAddress(window_->vk_device_, index_buffer_);
+	geometry.geometry.triangles.indexData.deviceAddress = indexAddress;
 	geometry.geometry.triangles.transformData.deviceAddress = 0; 
 
 	VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
@@ -329,7 +334,7 @@ void object::create_BLAS()
 
 void object::create_buffers()
 {
-	VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
+	/*VkDeviceSize vertex_bufferSize = sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
 	createBuffer(vertex_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, vertices_buffer_, vertices_buffer_memory_);
 	uploadDataToBuffer(vertex_.vertices.data(), vertices_buffer_memory_, vertex_bufferSize);
 
@@ -339,7 +344,7 @@ void object::create_buffers()
 	uploadDataToBuffer(indices_.data(), index_buffer_memory_, index_bufferSize);
 
 	// Crear y configurar el buffer de normales
-	/*VkDeviceSize normal_bufferSize = sizeof(vertex_.normals[0]) * vertex_.normals.size();
+	VkDeviceSize normal_bufferSize = sizeof(vertex_.normals[0]) * vertex_.normals.size();
 	createBuffer(normal_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, normal_buffer_, normal_buffer_memory_);
 	uploadDataToBuffer(vertex_.normals.data(), normal_buffer_memory_, normal_bufferSize);
 
@@ -347,11 +352,31 @@ void object::create_buffers()
 	VkDeviceSize color_bufferSize = sizeof(vertex_.color);
 	createBuffer(color_bufferSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, color_buffer_, color_buffer_memory_);
 	uploadDataToBuffer(&vertex_.color, color_buffer_memory_, color_bufferSize);
-	*/
+	
 	// Crear y configurar el buffer para la matriz del modelo
 	VkDeviceSize model_bufferSize = sizeof(glm::mat4);
 	createBuffer(model_bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, model_buffer_, model_buffer_memory_);
-	uploadDataToBuffer(&transform_, model_buffer_memory_, model_bufferSize);
+	uploadDataToBuffer(&transform_, model_buffer_memory_, model_bufferSize);*/
+
+	VkDeviceSize vertex_buffer_size = sizeof(Vertex) * vertex_.vertices.size() +  sizeof(glm::mat4) + sizeof(uint32_t) * indices_.size();
+	createBuffer(vertex_buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT , 
+		vertex_buffer_, vertex_buffer_memory_);
+
+	uploadAllDataToSingleBuffer(
+		vertex_.vertices.data(), sizeof(vertex_.vertices[0]) * vertex_.vertices.size(), // Datos y tamaño de los vértices
+		indices_.data(), sizeof(indices_[0]) * indices_.size(), // Datos y tamaño de los índices
+		vertex_.normals.data(), sizeof(vertex_.normals[0]) * vertex_.normals.size(), // Datos y tamaño de las normales
+		&vertex_.color, sizeof(vertex_.color), // Datos y tamaño del color
+		&transform_, sizeof(glm::mat4), // Datos y tamaño de la matriz de transformación
+		vertex_buffer_memory_ // Memoria del buffer combinado
+	);
+
 }
 
 void object::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
@@ -400,6 +425,36 @@ void object::update_model_matrix_buffer()
 	vkMapMemory(window_->vk_device_, model_buffer_memory_, 0, sizeof(glm::mat4), 0, &data);
 	memcpy(data, &transform_, sizeof(glm::mat4));
 	vkUnmapMemory(window_->vk_device_, model_buffer_memory_);
+}
+
+void object::uploadAllDataToSingleBuffer(const void* verticesData, VkDeviceSize verticesSize,
+	const void* normalsData, VkDeviceSize normalsSize,
+	const void* colorData, VkDeviceSize colorSize,
+	const void* modelData, VkDeviceSize modelSize,
+	const void* indicesData, VkDeviceSize indicesSize,
+	VkDeviceMemory bufferMemory)
+{
+	// Mapea la memoria una sola vez
+	void* mappedData;
+	vkMapMemory(window_->vk_device_, bufferMemory, 0, verticesSize + normalsSize + colorSize + modelSize + indicesSize, 0, &mappedData);
+
+	// Copia los datos de los vértices
+	memcpy(mappedData, verticesData, static_cast<size_t>(verticesSize));
+
+	// Copia los datos de las normales (teniendo en cuenta el offset)
+	memcpy(static_cast<char*>(mappedData) + verticesSize, normalsData, static_cast<size_t>(normalsSize));
+
+	// Copia los datos de los colores (teniendo en cuenta los offsets anteriores)
+	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize, colorData, static_cast<size_t>(colorSize));
+
+	// Copia los datos de la matriz modelo (teniendo en cuenta los offsets anteriores)
+	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize, modelData, static_cast<size_t>(modelSize));
+
+	// Copia los datos de los índices (teniendo en cuenta todos los offsets anteriores)
+	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize + modelSize, indicesData, static_cast<size_t>(indicesSize));
+
+	// Desmapea la memoria
+	vkUnmapMemory(window_->vk_device_, bufferMemory);
 }
 
 uint32_t object::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
