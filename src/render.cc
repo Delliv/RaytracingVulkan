@@ -62,7 +62,7 @@ void render::create_pipeline()
 	miss = createShaderModule(window_->vk_device_, miss_shader_code);
 	closestHit = createShaderModule(window_->vk_device_, closest_hit_shader_code);
 
-	std::array<VkPipelineShaderStageCreateInfo, 3> shaderStages = {};
+	shaderStages = {};
 
 	shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	shaderStages[0].stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
@@ -82,7 +82,7 @@ void render::create_pipeline()
 	shaderStages[2].pName = "main";
 	shaderStages[2].flags = 0;
 
-	std::array<VkRayTracingShaderGroupCreateInfoKHR, 3> shaderGroups = {};
+	shaderGroups = {};
 
 	// Raygen Shader Group
 	shaderGroups[0].sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
@@ -148,8 +148,7 @@ void render::create_pipeline()
 	//--------------------------------------------------
 
 	//---------------- Layout configuration -----------------
-	VkDescriptorSetLayout setLayouts[] = {descriptor_set_layout ,
-										   };
+	VkDescriptorSetLayout setLayouts[] = {descriptor_set_layout};
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = sizeof(setLayouts) / sizeof(setLayouts[0]);
@@ -336,20 +335,6 @@ void render::record_command_buffers() {
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-		// Verificar si necesitas construir/actualizar la TLAS
-		VkBufferDeviceAddressInfo bufferDeviceAI = {};
-		bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-		bufferDeviceAI.buffer = window_->scratch_buffer_; // Asegúrate de que scratchBuffer es el búfer de scratch correcto
-		VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &window_->tlasBuildRangeInfo;
-		pfnVkCmdBuildAccelerationStructuresKHR(
-			command_buffers[i],
-			1, // Número de estructuras para construir
-			&window_->VkAccelerationStructureBuildGeometryInfoKHR_info_, // Información de la estructura de aceleración
-			&pTlasBuildRangeInfo // Información del rango de construcción
-		);
-			// Asegúrate de añadir cualquier sincronización necesaria aquí
-		
-
 		// Inicio del render pass
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -386,7 +371,7 @@ void render::record_command_buffers() {
 			1, &barrier
 		);
 
-		vkCmdBeginRenderPass(command_buffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+		//vkCmdBeginRenderPass(command_buffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		// Configuración y trazado de rayos
 		vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, pipeline_);
@@ -404,9 +389,22 @@ void render::record_command_buffers() {
 		}
 
 
-		vkCmdEndRenderPass(command_buffers[i]);
+		//vkCmdEndRenderPass(command_buffers[i]);
 
 		if (i != 0) {
+			// Verificar si necesitas construir/actualizar la TLAS
+			/*VkBufferDeviceAddressInfo bufferDeviceAI = {};
+			bufferDeviceAI.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+			bufferDeviceAI.buffer = window_->scratch_buffer_; // Asegúrate de que scratchBuffer es el búfer de scratch correcto
+			VkAccelerationStructureBuildRangeInfoKHR* pTlasBuildRangeInfo = &window_->tlasBuildRangeInfo;
+			pfnVkCmdBuildAccelerationStructuresKHR(
+				command_buffers[i],
+				1, // Número de estructuras para construir
+				&window_->VkAccelerationStructureBuildGeometryInfoKHR_info_, // Información de la estructura de aceleración
+				&pTlasBuildRangeInfo // Información del rango de construcción
+			);*/
+			// Asegúrate de añadir cualquier sincronización necesaria aquí
+
 			// Configuración de las regiones del SBT para trazado de rayos
 			// Asegúrate de que estas regiones estén configuradas correctamente
 			VkBufferDeviceAddressInfo bufferDeviceAI_SBT = {};
@@ -678,12 +676,13 @@ void render::init_semaphore()
 void render::createSpecificDescriptorSetLayouts()
 {
 	// Define seis bindings en el layout de descriptor set
-	std::array<VkDescriptorSetLayoutBinding, 5> layoutBindings{};
+	//std::array<VkDescriptorSetLayoutBinding, 5> layoutBindings{};
+	std::array<VkDescriptorSetLayoutBinding, 1> layoutBindings{};
 
 	// Configuración de cada binding
 
 	// Binding 0: Posiciones de vértices
-	layoutBindings[0].binding = 0;
+	/*layoutBindings[0].binding = 0;
 	layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	layoutBindings[0].descriptorCount = 1;
 	layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
@@ -725,7 +724,24 @@ void render::createSpecificDescriptorSetLayouts()
 
 	if (vkCreateDescriptorSetLayout(window_->vk_device_, &layoutInfo, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create descriptor set layout!");
+	}*/
+
+	VkDescriptorSetLayoutBinding layoutBinding{};
+	layoutBinding.binding = 4;
+	layoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	layoutBinding.descriptorCount = 1;
+	layoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_MISS_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+	layoutBinding.pImmutableSamplers = nullptr;
+
+	VkDescriptorSetLayoutCreateInfo layoutInfo{};
+	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	layoutInfo.bindingCount = 1;
+	layoutInfo.pBindings = &layoutBinding;
+
+	if (vkCreateDescriptorSetLayout(window_->vk_device_, &layoutInfo, nullptr, &descriptor_set_layout) != VK_SUCCESS) {
+		throw std::runtime_error("Failed to create descriptor set layout!");
 	}
+
 }
 
 void render::createDescriptorPool()
@@ -767,6 +783,7 @@ void render::createDescriptorSets()
 
 void render::updateDescriptorSets()
 {
+	/*
 	// Información del buffer de vértices
 	VkDescriptorBufferInfo vertexBufferInfo = {};
 	vertexBufferInfo.buffer = window_->scene_objects_.at(0).vertex_buffer_;
@@ -840,4 +857,26 @@ void render::updateDescriptorSets()
 
 	// Actualizar los descriptor sets
 	vkUpdateDescriptorSets(window_->vk_device_, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
+	*/
+
+
+	// Información del buffer de la imagen
+	VkDescriptorImageInfo imageInfo = {};
+	imageInfo.imageView = window_->draw_buffer_image_view_;
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+	// Array para actualizar los descriptor sets (solo el binding 4)
+	std::array<VkWriteDescriptorSet, 1> writeDescriptorSets = {};
+
+	// Descriptor para la image view
+	writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSets[0].dstSet = descriptorSets_;
+	writeDescriptorSets[0].dstBinding = 4; // El binding para la imagen de almacenamiento
+	writeDescriptorSets[0].descriptorCount = 1;
+	writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+	writeDescriptorSets[0].pImageInfo = &imageInfo;
+
+	// Actualizar los descriptor sets
+	vkUpdateDescriptorSets(window_->vk_device_, writeDescriptorSets.size(), writeDescriptorSets.data(), 0, nullptr);
+
 }

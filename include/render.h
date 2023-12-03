@@ -98,6 +98,9 @@ private:
 	VkDescriptorSet descriptorSets_;
 
 	camera* camera_;
+
+	std::array<VkPipelineShaderStageCreateInfo, 3> shaderStages;
+	std::array<VkRayTracingShaderGroupCreateInfoKHR, 3> shaderGroups;
 };
 
 #endif 
