@@ -66,7 +66,8 @@ public:
 
 	VkAccelerationStructureKHR acceleration_structure_;
 	uint32_t blas_id_;
-
+	VkAccelerationStructureGeometryKHR geometry{};
+	VkAccelerationStructureBuildRangeInfoKHR BLAS_object_infoKHR;
 	friend render;
 private:
 	glm::mat4 transform_;

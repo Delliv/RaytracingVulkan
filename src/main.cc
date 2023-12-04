@@ -18,6 +18,8 @@ int main() {
 
 	object obj(window_.get());
 	obj.create_buffers();
+	obj.scale(glm::vec3(5, 5, 5));
+	obj.translate(glm::vec3(0.0f, 0.0f, -10.0f));
 	obj.create_BLAS();
 
 	window_->scene_objects_.push_back(obj);

@@ -10,31 +10,41 @@ struct Vertex {
 layout(binding = 0, set = 0) buffer Vertices {
     Vertex vertices[];
 };
-
+*/
 layout(binding = 1, set = 0) buffer Matrices {
     mat4 modelMatrix;
 };
 
+struct RayPayload {
+    vec3 rayDir;
+};
+
+// Crea una instancia de tu payload
+layout(location = 5) rayPayloadInEXT RayPayload RayInformationpayload;
+layout(set = 0, binding = 4, rgba8) uniform image2D img;
 layout(binding = 2, set = 0) uniform accelerationStructureEXT TLAS;
 
 
 layout(location = 0) rayPayloadInEXT vec4 payload;
-layout(location = 1) rayPayloadInEXT vec3 hitNormal;
+//layout(location = 1) rayPayloadInEXT vec3 hitNormal;
 layout(location = 2) rayPayloadInEXT vec3 hitColor;
-*/
-layout(binding = 4, rgba8) uniform writeonly image2D resultadoImagen;
+
+
+hitAttributeEXT vec3 hitNormal;
+hitAttributeEXT float hitDistance;
 
 void main() {
-    /*vec3 normal = normalize((modelMatrix * vec4(hitNormal, 0.0)).xyz);
-    float intensity = dot(normal, -gl_WorldRayDirectionEXT);
-    intensity = max(intensity, 0.0);
-    //vec3 transformedPosition = (modelMatrix * vec4(vertices[0].position, 1.0)).xyz;
+   vec3 rayOrigin = vec3(0.0f, 0.0f, -0.5f);
+   vec3 WorldPosition = rayOrigin + RayInformationpayload.rayDir * hitDistance;
 
+   vec3 worldNormal = normalize(hitNormal);
+   vec3 lightPos = vec3(10.0f, 10.0f, 10.0f);
+   vec3 lightDir = normalize(lightPos - WorldPosition);
+   float lightIntensity = 1.0f;
 
-    // Establece el valor de 'payload' según tus necesidades
-    //payload = vec4(hitColor * intensity, 1.0); // Valor de ejemplo
-    
-    ivec2 pixelCoord = ivec2(gl_LaunchIDEXT.xy);
-    imageStore(resultadoImagen, pixelCoord, vec4(1.0, 0.0, 0.0, 1.0)); // Almacenar un co;*/
+   float diff = max(dot(worldNormal, lightDir), 0.0);
+    vec3 diffuse = diff * vec3(1.0f,1.0f,0.0f) * lightIntensity;
+
+    hitColor = diffuse;
 }
 

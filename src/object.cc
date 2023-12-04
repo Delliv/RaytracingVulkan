@@ -214,16 +214,19 @@ void object::create_BLAS()
 {
 	VkDeviceAddress baseAddress = getBufferDeviceAddress(window_->vk_device_, vertex_buffer_);
 	VkDeviceAddress vertexAddress = baseAddress;
-	VkDeviceAddress indexAddress = vertexAddress + sizeof(vertex_.vertices[0]) * vertex_.vertices.size();
+	VkDeviceAddress indexAddress = baseAddress
+		+ sizeof(glm::vec3) * vertex_.vertices.size()  // Tamaño de los vértices
+		+ sizeof(glm::vec3) * vertex_.normals.size()   // Tamaño de las normales
+		+ sizeof(glm::vec3);
 
 
-	VkAccelerationStructureGeometryKHR geometry{};
+	geometry = {};
 	geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
 	geometry.geometryType = VK_GEOMETRY_TYPE_TRIANGLES_KHR;
 	geometry.geometry.triangles.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR;
 	geometry.geometry.triangles.vertexFormat = VK_FORMAT_R32G32B32_SFLOAT; 
 	geometry.geometry.triangles.vertexData.deviceAddress = vertexAddress;
-	geometry.geometry.triangles.vertexStride = sizeof(Vertex); 
+	geometry.geometry.triangles.vertexStride = sizeof(glm::vec3);//sizeof(Vertex); 
 	geometry.geometry.triangles.maxVertex = vertex_.vertices.size(); 
 	geometry.geometry.triangles.indexType = VK_INDEX_TYPE_UINT32; 
 	geometry.geometry.triangles.indexData.deviceAddress = indexAddress;
@@ -256,7 +259,7 @@ void object::create_BLAS()
 	VkBufferCreateInfo blas_buffer_info = {};
 	blas_buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	blas_buffer_info.size = sizeInfo.accelerationStructureSize;
-	blas_buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+	blas_buffer_info.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 	blas_buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	if (vkCreateBuffer(window_->vk_device_, &blas_buffer_info, nullptr, &blas_buffer_) != VK_SUCCESS) {
@@ -321,15 +324,16 @@ void object::create_BLAS()
 	accelerationStructureCreateInfo.size = sizeInfo.accelerationStructureSize;
 	accelerationStructureCreateInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
+	BLAS_object_infoKHR = {};
+	BLAS_object_infoKHR.primitiveCount = vertex_.vertices.size() / 3;
+	BLAS_object_infoKHR.primitiveOffset = indexAddress;
+	BLAS_object_infoKHR.firstVertex = 0;
+	BLAS_object_infoKHR.transformOffset = 0;
+
 	if (pfnVkCreateAccelerationStructureKHR(window_->vk_device_, &accelerationStructureCreateInfo, nullptr, &acceleration_structure_) != VK_SUCCESS) {
 		throw std::runtime_error("Failed to create acceleration structure!");
 	}
-	/*
-	vkDestroyBuffer(window_->vk_device_, scratch_buffer_, nullptr);
-	vkFreeMemory(window_->vk_device_, scratch_buffer_memory_, nullptr);
 
-	scratch_buffer_ = VK_NULL_HANDLE;
-	scratch_buffer_memory_ = VK_NULL_HANDLE;*/
 }
 
 void object::create_buffers()
@@ -362,7 +366,8 @@ void object::create_buffers()
 	createBuffer(vertex_buffer_size, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
 		VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT |
+		VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
 
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT , 
@@ -427,16 +432,17 @@ void object::update_model_matrix_buffer()
 	vkUnmapMemory(window_->vk_device_, model_buffer_memory_);
 }
 
-void object::uploadAllDataToSingleBuffer(const void* verticesData, VkDeviceSize verticesSize,
+void object::uploadAllDataToSingleBuffer(
+	const void* verticesData, VkDeviceSize verticesSize,
 	const void* normalsData, VkDeviceSize normalsSize,
 	const void* colorData, VkDeviceSize colorSize,
-	const void* modelData, VkDeviceSize modelSize,
 	const void* indicesData, VkDeviceSize indicesSize,
+	const void* modelData, VkDeviceSize modelSize,
 	VkDeviceMemory bufferMemory)
 {
 	// Mapea la memoria una sola vez
 	void* mappedData;
-	vkMapMemory(window_->vk_device_, bufferMemory, 0, verticesSize + normalsSize + colorSize + modelSize + indicesSize, 0, &mappedData);
+	vkMapMemory(window_->vk_device_, bufferMemory, 0, verticesSize + normalsSize + colorSize + indicesSize + modelSize, 0, &mappedData);
 
 	// Copia los datos de los vértices
 	memcpy(mappedData, verticesData, static_cast<size_t>(verticesSize));
@@ -447,11 +453,11 @@ void object::uploadAllDataToSingleBuffer(const void* verticesData, VkDeviceSize 
 	// Copia los datos de los colores (teniendo en cuenta los offsets anteriores)
 	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize, colorData, static_cast<size_t>(colorSize));
 
-	// Copia los datos de la matriz modelo (teniendo en cuenta los offsets anteriores)
-	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize, modelData, static_cast<size_t>(modelSize));
-
 	// Copia los datos de los índices (teniendo en cuenta todos los offsets anteriores)
-	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize + modelSize, indicesData, static_cast<size_t>(indicesSize));
+	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize, indicesData, static_cast<size_t>(indicesSize));
+
+	// Copia los datos de la matriz modelo (teniendo en cuenta todos los offsets anteriores)
+	memcpy(static_cast<char*>(mappedData) + verticesSize + normalsSize + colorSize + indicesSize, modelData, static_cast<size_t>(modelSize));
 
 	// Desmapea la memoria
 	vkUnmapMemory(window_->vk_device_, bufferMemory);
