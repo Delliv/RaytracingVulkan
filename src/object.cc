@@ -98,7 +98,8 @@ object::object(window* w)
 	PpfnVkGetBufferDeviceAddressKHR = (PFN_vkGetBufferDeviceAddressKHR)vkGetDeviceProcAddr(window_->vk_device_, "vkGetBufferDeviceAddressKHR");
 	
 	transform_ = glm::mat4(1.0);
-
+	
+	
 	vertex_.vertices = {
 		// Front face
 		glm::vec3(-0.5f, -0.5f, 0.5f),
@@ -214,10 +215,11 @@ void object::create_BLAS()
 {
 	VkDeviceAddress baseAddress = getBufferDeviceAddress(window_->vk_device_, vertex_buffer_);
 	VkDeviceAddress vertexAddress = baseAddress;
-	VkDeviceAddress indexAddress = baseAddress
+	VkDeviceAddress indexAddress = getBufferDeviceAddress(window_->vk_device_, indices_buffer_);
+		/*baseAddress
 		+ sizeof(glm::vec3) * vertex_.vertices.size()  // Tamaño de los vértices
 		+ sizeof(glm::vec3) * vertex_.normals.size()   // Tamaño de las normales
-		+ sizeof(glm::vec3);
+		+ sizeof(glm::vec3);*/
 
 
 	geometry = {};
@@ -382,6 +384,13 @@ void object::create_buffers()
 		vertex_buffer_memory_ // Memoria del buffer combinado
 	);
 
+	VkDeviceSize indices_buffer_size = sizeof(glm::vec3) * indices_.size();
+	createBuffer(indices_buffer_size, VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+		| VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR
+		, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		indices_buffer_, indices_memory_buffer_);
+	uploadDataToBuffer(indices_.data(), indices_memory_buffer_, indices_buffer_size);
+
 }
 
 void object::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
@@ -424,13 +433,6 @@ void object::uploadDataToBuffer(const void* data, VkDeviceMemory bufferMemory, V
 	vkUnmapMemory(window_->vk_device_, bufferMemory);
 }
 
-void object::update_model_matrix_buffer()
-{
-	void* data;
-	vkMapMemory(window_->vk_device_, model_buffer_memory_, 0, sizeof(glm::mat4), 0, &data);
-	memcpy(data, &transform_, sizeof(glm::mat4));
-	vkUnmapMemory(window_->vk_device_, model_buffer_memory_);
-}
 
 void object::uploadAllDataToSingleBuffer(
 	const void* verticesData, VkDeviceSize verticesSize,

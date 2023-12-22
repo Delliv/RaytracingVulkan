@@ -325,13 +325,13 @@ void render::create_command_buffers()
 
 void render::record_command_buffers() {
 	//vkWaitForFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_], VK_TRUE, UINT64_MAX);
-	//vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
+//vkResetFences(window_->vk_device_, 1, &in_flight_fences_[current_frame_]);
 
 	for (size_t i = 0; i < command_buffers.size(); i++) {
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-		
+
 		if (vkBeginCommandBuffer(command_buffers[i], &beginInfo) != VK_SUCCESS) {
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
@@ -385,7 +385,7 @@ void render::record_command_buffers() {
 			&descriptorSets_,
 			0,
 			nullptr);
-		if(i == 0){
+		if (i == 0) {
 			updateDescriptorSets();
 		}
 
@@ -712,14 +712,14 @@ void render::createSpecificDescriptorSetLayouts()
 	layoutBindings[0].binding = 0;
 	layoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	layoutBindings[0].descriptorCount = 1;
-	layoutBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+	layoutBindings[0].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	layoutBindings[0].pImmutableSamplers = nullptr;
 
 	// Binding 1: Matriz modelo
 	layoutBindings[1].binding = 1;
 	layoutBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	layoutBindings[1].descriptorCount = 1;
-	layoutBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+	layoutBindings[1].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	layoutBindings[1].pImmutableSamplers = nullptr;
 	// Binding 2: TLAS
 	layoutBindings[2].binding = 2;
@@ -732,7 +732,7 @@ void render::createSpecificDescriptorSetLayouts()
 	layoutBindings[3].binding = 3;
 	layoutBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	layoutBindings[3].descriptorCount = 1;
-	layoutBindings[3].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+	layoutBindings[3].stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
 	layoutBindings[3].pImmutableSamplers = nullptr;
 
 	// Binding 4: Image to draw color result
@@ -835,7 +835,7 @@ void render::updateDescriptorSets()
 	tlasInfo.accelerationStructureCount = 1;
 	tlasInfo.pAccelerationStructures = &window_->TLAS_;
 
-	// Información del buffer de la cámara
+	// Imagen
 	VkDescriptorImageInfo  imageInfo = {};
 	imageInfo.imageView = window_->draw_buffer_image_view_;
 	imageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;

@@ -4,9 +4,12 @@
 camera::camera(window* w)
 {
 	window_ = w;
-	position = glm::vec3(0.0f, 0.0f, -0.5f);
+	position = glm::vec3(0.0f, 0.0f, -50.5f);
 	viewMatrix = glm::lookAt(position, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)); 
-	projectionMatrix = glm::perspective(glm::radians(45.0f), (float)(window_->width_ / window_->height_), 0.1f, 100.0f); // Ejemplo: matriz de proyección perspectiva
+	projectionMatrix = glm::perspective(glm::radians(45.0f), (float)(window_->width_ / window_->height_), 0.1f, 1.0f); // Ejemplo: matriz de proyección perspectiva
+
+	inverseViewMatrix = glm::inverse(viewMatrix);
+	inverseProjectionMatrix = glm::inverse(projectionMatrix);
 
 	create_buffer();
 }

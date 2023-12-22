@@ -39,17 +39,8 @@ public:
 	VkBuffer vertex_buffer_;
 	VkDeviceMemory vertex_buffer_memory_;
 
-
-	VkBuffer vertices_buffer_;
-	VkDeviceMemory vertices_buffer_memory_;
-	VkBuffer color_buffer_;
-	VkDeviceMemory color_buffer_memory_;
-	VkBuffer normal_buffer_;
-	VkDeviceMemory normal_buffer_memory_;
-	VkBuffer index_buffer_;
-	VkDeviceMemory index_buffer_memory_;
-	VkBuffer model_buffer_;
-	VkDeviceMemory model_buffer_memory_;
+	VkBuffer indices_buffer_;
+	VkDeviceMemory indices_memory_buffer_;
 
 	// Pointers to acceleration functions
 	PFN_vkCreateAccelerationStructureKHR pfnVkCreateAccelerationStructureKHR = nullptr;
@@ -70,6 +61,7 @@ public:
 	VkAccelerationStructureBuildRangeInfoKHR BLAS_object_infoKHR;
 	friend render;
 private:
+	
 	glm::mat4 transform_;
 	Vertex vertex_;
 	std::vector<uint32_t> indices_;

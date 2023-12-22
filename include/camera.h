@@ -1,6 +1,7 @@
 #ifndef camera_class
 #define camera_class
 
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include "glm.hpp"
 #include "vulkan.h"
 #include <optional>
@@ -26,6 +27,8 @@ private:
 	glm::vec3 position;
 	glm::mat4 viewMatrix;
 	glm::mat4 projectionMatrix;
+	glm::mat4 inverseViewMatrix;
+	glm::mat4 inverseProjectionMatrix;
 
 	VkBuffer camera_buffer_;
 	VkDeviceMemory camera_buffer_memory_;

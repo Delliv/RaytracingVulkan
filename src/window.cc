@@ -726,7 +726,14 @@ void window::create_TLAS(render* render_) {
 
 		// Convert glm::mat4 to VkTransformMatrixKHR by transposing it to match Vulkan's layout
 		glm::mat4 transform = obj.get_matrix(); // Esto obtiene tu glm::mat4
-		glm::vec4 col0 = transform[0];
+		VkTransformMatrixKHR vulkanMatrix;
+		for (int i = 0; i < 3; ++i) {
+			for (int j = 0; j < 4; ++j) {
+				vulkanMatrix.matrix[i][j] = transform[j][i]; // Transpone y copia los elementos
+			}
+		}
+		memcpy(&vkInstance.transform, &vulkanMatrix, sizeof(VkTransformMatrixKHR));
+		/*glm::vec4 col0 = transform[0];
 		glm::vec4 col1 = transform[1];
 		glm::vec4 col2 = transform[2];
 
@@ -737,6 +744,8 @@ void window::create_TLAS(render* render_) {
 		transposedMatrix[3] = glm::vec3(transform[3]);
 		glm::mat4x3 transposed = glm::transpose(transposedMatrix);
 		memcpy(&vkInstance.transform, &transposed, sizeof(VkTransformMatrixKHR));
+		*/
+
 
 		// Fill the remaining fields for the instance
 		vkInstance.instanceCustomIndex = obj.blas_id_; // A unique identifier for this instance.
@@ -745,7 +754,6 @@ void window::create_TLAS(render* render_) {
 		vkInstance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR; // Instance flags.
 		vkInstance.accelerationStructureReference = obj.getBLASDeviceAddress(vk_device_); // The BLAS reference.
 		vk_acceleration_structure_instances_.at(i) = (vkInstance);
-
 	}
 
 	// Create the buffer for the TLAS instances
